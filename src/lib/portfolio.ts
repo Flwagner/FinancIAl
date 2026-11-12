@@ -2,8 +2,11 @@ import { symbolForCode } from './market';
 export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market'; group?: string; rateAsOf?: string };
 export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number> };
 export type Goals = { capital: number; annual: number; monthly: number };
-export type Portfolio = { readings: Reading[]; goals: Goals };
-export const defaultGoals: Goals = { capital: 250000, annual: 48000, monthly: 3000 };
+export type Portfolio = { readings: Reading[]; goals: Goals; updatedAt?: string };
+export function normalizeGoals(goals: Goals): Goals {
+  return { ...goals, monthly: goals.annual / 12 };
+}
+export const defaultGoals: Goals = normalizeGoals({ capital: 250000, annual: 48000, monthly: 0 });
 export const categories = ['SCPI', 'Actions', 'Bricks', 'Livret A', 'Assurance vie (fonds €)', 'Obligations', 'Or', 'Crypto', 'Bitcoin'];
 export const colors = ['#a3e635', '#818cf8', '#22d3ee', '#fbbf24', '#fb923c', '#f472b6', '#e2c56e', '#2dd4bf', '#c084fc'];
 export const euro = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value);
@@ -24,6 +27,14 @@ export function currentReadings(readings: Reading[]) {
   const projection = sorted.find(r => r.projected && (!actual || r.date > actual.date));
   const previous = sorted.filter(r => !r.projected && r.id !== actual?.id).at(-1);
   return { actual, projection, previous, change: projection && actual ? projection.total - actual.total : actual && previous ? actual.total - previous.total : null };
+}
+// Le détail le plus récent en BDD reste affiché, quelle que soit sa date
+// ou la nature du point global auquel l'import l'a associé.
+export function currentSnapshot(data: Portfolio) {
+  return [...data.readings].filter(r => r.positions.length).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+}
+export function monthlyReadings(readings: Reading[]) {
+  return readings.filter(r => r.date.endsWith('-01'));
 }
 export function validatePortfolio(data: Portfolio) {
   const dates = new Set<string>();

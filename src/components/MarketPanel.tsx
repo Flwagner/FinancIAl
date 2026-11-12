@@ -1,21 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { loadMarketData } from '@/lib/supabase';
 import { freezeChangedReadings, type MarketData } from '@/lib/market';
 import type { Portfolio } from '@/lib/portfolio';
 import Dashboard from './Dashboard';
 import Editor from './Editor';
+import SidebarGoals from './SidebarGoals';
 
-export default function MarketPanel({ data, onSave, tab }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor' }) {
+export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor'; sidebar: HTMLDivElement | null }) {
   const [market, setMarket] = useState<MarketData>({ returns: [], statuses: [] });
-  const [loading, setLoading] = useState(false);
-  async function refresh() {
-    setLoading(true);
-    try { setMarket(await loadMarketData()); }
-    catch { setMarket({ returns: [], statuses: [], error: 'Lecture des données de marché impossible ; taux des relevés conservés.' }); }
-    finally { setLoading(false); }
-  }
   useEffect(() => {
     let active = true;
     async function update() {
@@ -32,7 +26,8 @@ export default function MarketPanel({ data, onSave, tab }: { data: Portfolio; on
     await onSave({ ...next, readings });
   }
   return <>
-    <div className="market-toolbar"><span>Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR</span><button className="button secondary small" disabled={loading} onClick={() => void refresh()}><RefreshCw size={13} />{loading ? 'Lecture…' : 'Relire les dernières données'}</button></div>
+    {sidebar && createPortal(<SidebarGoals data={data} market={market} onSave={save} />, sidebar)}
+    <div className="market-toolbar"><span>Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR</span></div>
     {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : <Editor data={data} onSave={save} market={market} />}
   </>;
 }

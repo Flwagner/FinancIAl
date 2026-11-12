@@ -1,22 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
-import { defaultGoals, validatePortfolio, type Portfolio } from './portfolio';
+import { defaultGoals, normalizeGoals, validatePortfolio, type Portfolio } from './portfolio';
 import type { MarketData } from './market';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
 export async function loadPortfolio(): Promise<Portfolio | null> {
   if (!supabase) throw new Error('Supabase non configuré.');
-  const { data, error } = await supabase.from('portfolios').select('data').maybeSingle();
+  const { data, error } = await supabase.from('portfolios').select('data, updated_at').maybeSingle();
   if (error) throw error;
-  return data?.data ? data.data as Portfolio : null;
+  if (!data?.data) return null;
+  const portfolio = data.data as Portfolio;
+  return { ...portfolio, goals: normalizeGoals(portfolio.goals), updatedAt: data.updated_at };
 }
 export async function savePortfolio(data: Portfolio) {
   if (!supabase) throw new Error('Supabase non configuré.');
+  data = { ...data, goals: normalizeGoals(data.goals) };
   validatePortfolio(data);
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) throw new Error('Connexion requise.');
-  const { error } = await supabase.from('portfolios').upsert({ user_id: user.id, data, updated_at: new Date().toISOString() });
+  // La date de fraîcheur vient de la ligne en BDD, pas du document financier.
+  const { updatedAt: _, ...document } = data;
+  const { data: saved, error } = await supabase.from('portfolios').upsert({ user_id: user.id, data: document, updated_at: new Date().toISOString() }).select('updated_at').single();
   if (error) throw error;
+  return saved.updated_at as string;
 }
 export const emptyPortfolio: Portfolio = { readings: [], goals: defaultGoals };
 

@@ -61,15 +61,20 @@ Les colonnes I:L de l'onglet Actions (Nom, Montant, Code, Rendement) servent à 
 
 Les fichiers ne sont transmis nulle part avant confirmation ; la confirmation sauvegarde uniquement le résultat dans ton Supabase. Ne jamais committer les exports privés (`imports/` est ignoré).
 
+## Situation actuelle et historique mensuel
+
+Le dashboard et les objectifs affichent les placements du dernier relevé détaillé disponible dans `portfolios.data.readings`, quelle que soit sa date. Le caractère projeté du point global ne masque pas les placements associés lors de l'import. Aucun nouveau champ ni changement du format de la BDD n'est nécessaire.
+
+Seule la courbe utilise les totaux globaux datés du premier jour de chaque mois. Les détails plus récents restent visibles dans le dashboard sans ajouter de point quotidien à la courbe. Les montants sont relus toutes les 60 secondes et au retour sur la fenêtre ; les taux de marché toutes les 5 minutes.
+
 ## Calculs V1
 
 - Gain annuel estimé = somme des montants × taux annuel / 100. Mensuel = annuel / 12.
 - Les nouveaux imports recalculent les taux Actions et SCPI depuis les lignes détaillées. **JEQP est inclus** dans la moyenne pondérée Actions, contrairement à l'ancienne formule du Sheet. Les taux de synthèse hérités sont ignorés dès qu'une catégorie contient un placement en mode marché. Les autres taux de synthèse restent modifiables dans chaque relevé.
 - ETF Monde : moyenne pondérée des performances WPEA/DCAM par leurs montants, pas moyenne simple.
 - Rendement global = gain annuel estimé / capital détaillé.
-- Total en tête = première projection après le dernier relevé réel, sinon dernier relevé réel.
-- Gain du mois = cette projection − dernier relevé réel. Sans projection : variation entre les deux derniers relevés réels. Les apports/retraits ne sont pas isolés : ce n’est pas une performance financière nette des flux.
-- Le dernier relevé **détaillé** fournit les répartitions et taux ; sa date est affichée. Une projection globale ne fabrique pas de détail.
+- Total en tête = somme des derniers montants détaillés disponibles, indépendamment des totaux mensuels ; répartitions et estimations utilisent ces mêmes placements et les derniers taux de marché disponibles.
+- Progression en cours = total actuel − dernier point mensuel réel validé de la courbe, sans utiliser les projections. Les apports/retraits ne sont pas isolés : ce n’est pas une performance financière nette des flux.
 - Une projection ne devient jamais réelle automatiquement : modifier sa nature et valider le relevé à la clôture.
 
 ## Rendements automatiques sur 365 jours
@@ -115,7 +120,7 @@ on conflict(singleton) do update set token_sha256 = excluded.token_sha256;
 
 3. Dans GitHub → Settings → Secrets and variables → Actions, ajouter le **secret** `MARKET_SYNC_TOKEN` avec le même jeton. L'URL et la clé publique utilisent les deux variables déjà configurées pour le déploiement.
 4. Pousser sur la branche par défaut. Dans Actions, lancer **Synchroniser les rendements de marché** manuellement pour amorcer les valeurs.
-5. Le workflow `.github/workflows/sync-market.yml` tourne quotidiennement à **06:17 UTC**, y compris le week-end. GitHub peut retarder les exécutions planifiées et désactiver les schedules des dépôts publics inactifs ; contrôler les journaux.
+5. Le workflow `.github/workflows/sync-market.yml` tourne quotidiennement à **09:30 et 14:00 heure française (`Europe/Paris`)**, y compris le week-end, avec changement d'heure été/hiver automatique. GitHub peut retarder les exécutions planifiées et désactiver les schedules des dépôts publics inactifs ; contrôler les journaux.
 
 ### Comportement dans l'application
 

@@ -1,8 +1,11 @@
 name: Synchroniser les rendements de marché
 on:
   schedule:
-    # Le matin UTC : dernières clôtures complètes, jamais une bougie intraday.
-    - cron: '17 6 * * *'
+    # Tous les jours à 09:30 et 14:00 en France, changement d'heure été/hiver inclus.
+    - cron: '30 9 * * *'
+      timezone: 'Europe/Paris'
+    - cron: '0 14 * * *'
+      timezone: 'Europe/Paris'
   workflow_dispatch:
 permissions:
   contents: read
