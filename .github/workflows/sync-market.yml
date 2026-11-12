@@ -1,0 +1,29 @@
+name: Synchroniser les rendements de marché
+on:
+  schedule:
+    # Le matin UTC : dernières clôtures complètes, jamais une bougie intraday.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: market-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Synchroniser les clôtures et les performances sur 365 jours
+        run: npm run market:sync
+        env:
+          SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          MARKET_SYNC_TOKEN: ${{ secrets.MARKET_SYNC_TOKEN }}

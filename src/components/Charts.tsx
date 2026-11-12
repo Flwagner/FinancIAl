@@ -1,0 +1,19 @@
+'use client';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { colors, euro, type Reading } from '@/lib/portfolio';
+const tooltipStyle = { background: '#202624', border: '1px solid #39423d', borderRadius: 12, color: '#f1f5ef' };
+export function Distribution({ data }: { data: { name: string; value: number }[] }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (!total) return <p className="empty">Aucune valorisation disponible.</p>;
+  return <div className="distribution"><div className="donut"><ResponsiveContainer width="100%" height={230}><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={73} outerRadius={102} paddingAngle={3} stroke="none">{data.map((d, i) => <Cell key={d.name} fill={colors[i % colors.length]} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={v => euro(Number(v))} /></PieChart></ResponsiveContainer><div className="donut-center"><small>TOTAL</small><strong>{euro(total)}</strong></div></div><div className="legend">{data.map((d, i) => <div key={d.name}><i style={{ background: colors[i % colors.length] }} /><span>{d.name}</span><b>{(d.value / total * 100).toFixed(1)} %</b></div>)}</div></div>;
+}
+export function Evolution({ readings, target }: { readings: Reading[]; target: number }) {
+  const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));
+  const lastActual = sorted.filter(r => !r.projected).at(-1);
+  const data = sorted.map(r => ({ label: new Date(r.date + 'T12:00:00').toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }), actual: r.projected ? null : r.total, projection: r.projected || r.id === lastActual?.id ? r.total : null }));
+  return <div className="chart"><ResponsiveContainer width="100%" height={290}><AreaChart data={data} margin={{ top: 20, right: 12, bottom: 0, left: 0 }}><defs><linearGradient id="capitalFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#a3e635" stopOpacity={0.23} /><stop offset="100%" stopColor="#a3e635" stopOpacity={0} /></linearGradient></defs><CartesianGrid vertical={false} stroke="#2a322d" strokeDasharray="3 5" /><XAxis dataKey="label" tick={{ fill: '#8d9a92', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} /><YAxis tickFormatter={v => `${Math.round(v / 1000)}k`} tick={{ fill: '#8d9a92', fontSize: 11 }} axisLine={false} tickLine={false} width={45} domain={['auto', 'auto']} /><Tooltip contentStyle={tooltipStyle} formatter={v => euro(Number(v))} /><ReferenceLine y={target} ifOverflow="extendDomain" stroke="#65774d" strokeDasharray="5 5" label={{ value: 'Objectif', fill: '#9cac8b', fontSize: 11, position: 'insideTopRight' }} /><Area name="Patrimoine réel" type="monotone" dataKey="actual" stroke="#a3e635" strokeWidth={2.5} fill="url(#capitalFill)" /><Area name="Projection" type="monotone" dataKey="projection" stroke="#a3e635" strokeWidth={2} strokeDasharray="5 5" fill="transparent" /></AreaChart></ResponsiveContainer></div>;
+}
+export function Rates({ data }: { data: { name: string; rate: number }[] }) {
+  if (!data.length) return <p className="empty">Aucun placement.</p>;
+  return <ResponsiveContainer width="100%" height={240}><BarChart data={data} margin={{ top: 12, left: -25, right: 5, bottom: 20 }}><CartesianGrid vertical={false} stroke="#2a322d" /><XAxis dataKey="name" tick={{ fill: '#8d9a92', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-15} textAnchor="end" /><YAxis tick={{ fill: '#8d9a92', fontSize: 10 }} unit="%" axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} formatter={v => `${Number(v).toFixed(2)} %`} /><ReferenceLine y={0} stroke="#5b665e" /><Bar name="Taux" dataKey="rate" radius={[4, 4, 0, 0]} maxBarSize={35}>{data.map((d, i) => <Cell key={i} fill={d.rate < 0 ? '#fb7185' : '#a3e635'} />)}</Bar></BarChart></ResponsiveContainer>;
+}
