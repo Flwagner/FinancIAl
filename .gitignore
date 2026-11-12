@@ -5,3 +5,7 @@ out/
 !.env.example
 *.tsbuildinfo
 imports/
+
+# Fichiers locaux d'outillage des agents IA
+.agents/
+skills-lock.json
