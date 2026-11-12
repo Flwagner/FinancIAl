@@ -9,7 +9,7 @@ import Editor from './Editor';
 import SidebarGoals from './SidebarGoals';
 
 export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor'; sidebar: HTMLDivElement | null }) {
-  const [market, setMarket] = useState<MarketData>({ returns: [], statuses: [] });
+  const [market, setMarket] = useState<MarketData>({ returns: [], statuses: [], loading: true });
   useEffect(() => {
     let active = true;
     async function update() {

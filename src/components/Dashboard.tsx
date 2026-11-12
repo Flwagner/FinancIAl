@@ -16,7 +16,7 @@ export default function Dashboard({ data, market = { returns: [], statuses: [] }
   const rates = groups.map(g => ({ name: g.name, rate: summarize(positions.filter(p => p.category === g.name), live.categoryRates).rate }));
   const monthlyGains = groups.map(g => ({ name: g.name, value: summarize(positions.filter(p => p.category === g.name), live.categoryRates).monthly }));
   const monthlyLosses = monthlyGains.filter(g => g.value < 0);
-  if (!data.readings.length && !detailed) return <section className="panel empty"><Wallet size={34} /><h2>Ton patrimoine commence ici.</h2><p>Ouvre l’onglet Saisie pour mettre à jour tes placements ou importer tes exports Google Sheets.</p></section>;
+  if (!data.readings.length && !detailed) return <section className="panel empty"><Wallet size={34} /><h2>Ton patrimoine commence ici.</h2><p>Ouvre l’onglet Saisie pour ajouter tes placements.</p></section>;
   return <>
     {live.warnings.length > 0 && <div className="alert" role="status"><ul>{live.warnings.map(w => <li key={w}>{w}</li>)}</ul></div>}
     <div className="page-heading"><div><div className="eyebrow">UNE VUE D’ENSEMBLE, POUR ALLER PLUS LOIN</div><h1>Mon patrimoine<span>.</span></h1><p>Chaque placement compte. Garde le cap sur tes objectifs.</p></div>{data.updatedAt && Number.isFinite(Date.parse(data.updatedAt)) && <div className="date-chip" title="Dernière mise à jour du portefeuille en BDD"><span className="status-dot" />Mis à jour le <time dateTime={data.updatedAt}>{new Date(data.updatedAt).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' })}</time></div>}</div>

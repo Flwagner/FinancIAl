@@ -1,8 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { Plus, Save, Trash2, Upload, Check, Download } from 'lucide-react';
+import { Plus, Save, Trash2, Check, Download } from 'lucide-react';
 import { categories, currentSnapshot, euro, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
-import { importSheets, type ImportFiles } from '@/lib/import';
 import { livePositions, symbolForCode, type MarketData } from '@/lib/market';
 const today = () => new Date().toISOString().slice(0, 10);
 const blank = (positions: Position[] = []): Reading => ({ id: crypto.randomUUID(), date: today(), projected: false, total: summarize(positions).total, positions: structuredClone(positions) });
@@ -12,10 +11,6 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [files, setFiles] = useState<Partial<ImportFiles>>({});
-  const [detailDate, setDetailDate] = useState('');
-  const [projectionFrom, setProjectionFrom] = useState('');
-  const [preview, setPreview] = useState<ReturnType<typeof importSheets> | null>(null);
   const currentRates = livePositions(draft, market);
   function updatePosition(index: number, change: Partial<Position>) {
     const positions = draft.positions.map((p, i) => i === index ? {
@@ -29,20 +24,8 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     try {
       validatePortfolio(next);
       await onSave(next);
-      if (next === preview?.data) {
-        const imported = [...next.readings].filter(r => r.positions.length).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
-        setDraft(imported ? structuredClone(imported) : blank());
-        setPreview(null);
-      }
       setMessage(success);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
-  }
-  function previewImport() {
-    setError(''); setPreview(null);
-    try {
-      if (!files.evolution || !files.portfolio || !files.scpi || !files.actions) throw new Error('Sélectionne les quatre exports CSV.');
-      setPreview(importSheets(files as ImportFiles, detailDate, projectionFrom));
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }
   function exportBackup() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -72,6 +55,5 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     {!draft.positions.length && <label className="standalone">Total global (historique ou projection sans détail)<input type="number" min="0" step="0.01" value={draft.total} onChange={e => setDraft({ ...draft, total: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>}
     {!!draft.positions.length && <details><summary>Taux de synthèse par catégorie (compatibilité Google Sheet)</summary><p className="muted">Un taux de synthèse remplace les taux détaillés pour les calculs globaux. Laisse vide pour utiliser les taux de chaque placement.</p><div className="form-grid">{[...new Set(draft.positions.map(p => p.category))].map(c => <label key={c}>{c} (%)<input type="number" step="0.001" value={draft.categoryRates?.[c] ?? ''} onChange={e => { const rates = { ...draft.categoryRates }; if (!e.target.value) delete rates[c]; else rates[c] = Number(e.target.value); setDraft({ ...draft, categoryRates: rates }); }} /></label>)}</div></details>}
     <div className="editor-footer"><strong>Total : {euro(draft.total)}</strong><div className="actions">{data.readings.some(r => r.id === draft.id) && <button className="button danger" disabled={busy} onClick={() => { if (window.confirm('Supprimer définitivement ce relevé ?')) void persist({ ...data, readings: data.readings.filter(r => r.id !== draft.id) }, 'Relevé supprimé.'); }}>Supprimer le relevé</button>}<button className="button" disabled={busy} onClick={() => void persist({ ...data, readings: [...data.readings.filter(r => r.id !== draft.id), draft] }, 'Relevé enregistré dans Supabase.')}><Save size={16} />{busy ? 'Enregistrement…' : 'Enregistrer le relevé'}</button></div></div></section>
-    <section className="panel editor"><div className="panel-heading"><div><h2>Importer Google Sheets</h2><p>Un import initial contrôlé, sans rendre ton document public.</p></div><Upload size={22} /></div><p className="muted">Dans Google Sheets : Fichier → Télécharger → Valeurs séparées par des virgules (.csv), pour chaque onglet. Les fichiers sont analysés uniquement dans ton navigateur. Aucun envoi avant confirmation.</p><div className="form-grid">{(['evolution', 'portfolio', 'scpi', 'actions'] as const).map((key, i) => <label key={key}>CSV {['Évolution', 'Portefeuille', 'SCPI', 'Actions'][i]}<input type="file" accept=".csv,text/csv" onChange={async e => { const file = e.target.files?.[0]; setPreview(null); if (file) setFiles(f => ({ ...f, [key]: undefined })); try { const text = file ? await file.text() : undefined; setFiles(f => ({ ...f, [key]: text })); } catch { setError('Lecture du fichier impossible.'); } }} /></label>)}<label>Date du détail actuel<input type="date" value={detailDate} onChange={e => { setDetailDate(e.target.value); setPreview(null); }} /></label><label>Projections à partir du<input type="date" value={projectionFrom} onChange={e => { setProjectionFrom(e.target.value); setPreview(null); }} /></label></div><button className="button secondary" onClick={previewImport}>Prévisualiser l’import</button>{preview && <div className="import-preview"><h3>{preview.data.readings.length} relevés · {preview.data.readings.reduce((n, r) => n + r.positions.length, 0)} placements détaillés</h3><ul>{preview.warnings.map(w => <li key={w}>{w}</li>)}</ul><div className="table-scroll"><table><thead><tr><th>Date</th><th>Nature</th><th>Total</th></tr></thead><tbody>{preview.data.readings.map(r => <tr key={r.id}><td>{r.date}</td><td>{r.projected ? 'Projection' : 'Réel'}</td><td>{euro(r.total)}</td></tr>)}</tbody></table></div><p className="negative">Cet import remplace les relevés et objectifs actuels. Exporte une sauvegarde avant de continuer.</p><button className="button" disabled={busy} onClick={() => { if (window.confirm('Remplacer tout le portefeuille par cet import ?')) void persist(preview.data, 'Import enregistré.'); }}>Confirmer le remplacement</button></div>}</section>
   </>;
 }

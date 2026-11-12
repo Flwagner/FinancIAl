@@ -61,6 +61,19 @@ test('échec de synchronisation : dernière bonne valeur conservée et avertisse
   assert.equal(fallback.positions[0].rate, 2);
   assert.match(fallback.warnings[0], /conservé/);
 });
+test('aucun faux avertissement pendant le chargement initial des rendements', () => {
+  const pending = livePositions(reading, { returns: [], statuses: [], loading: true }, now);
+  assert.deepEqual(pending.warnings, []);
+  assert.equal(pending.positions[0].rate, base.rate);
+  const loaded = livePositions(reading, { returns: [performance], statuses: [] }, now);
+  assert.deepEqual(loaded.warnings, []);
+  assert.ok(Math.abs(loaded.positions[0].rate - 20) < 1e-9);
+  const missing = livePositions(reading, { returns: [], statuses: [] }, now);
+  assert.match(missing.warnings[0], /indisponible/);
+  const failed = livePositions(reading, { returns: [], statuses: [], error: 'Lecture impossible.' }, now);
+  assert.ok(failed.warnings.includes('Lecture impossible.'));
+  assert.match(failed.warnings[0], /indisponible/);
+});
 test('mode manuel inchangé et avertissement en cas de données anciennes', () => {
   const manual = livePositions({ ...reading, positions: [{ ...base, rateSource: 'manual' }] }, { returns: [performance], statuses: [] }, now);
   assert.equal(manual.positions[0].rate, 2);

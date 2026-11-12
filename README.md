@@ -41,9 +41,9 @@ insert into public.portfolio_owner(user_id) values ('UUID_DE_TON_COMPTE');
 
 Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques. V1 personnelle : éviter l’édition simultanée sur plusieurs appareils (la dernière sauvegarde gagne). Les positions et montants privés ne transitent pas par GitHub Actions : le script ne connaît que les symboles publics. Aucun stockage local persistant des finances ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
 
-## Importer le Google Sheet
+## Ancien import Google Sheet (hors interface)
 
-Onglet **Saisie des données → Importer Google Sheets** :
+L'import Google Sheets a été retiré de l'onglet **Saisie des données**. Le parseur reste disponible dans `src/lib/import.ts` pour les tests et la compatibilité des anciens imports. Son fonctionnement historique est décrit ci-dessous :
 
 1. Télécharger séparément les onglets Évolution, Portefeuille, SCPI et Actions via Fichier → Télécharger → CSV. Ne pas rendre le Sheet public.
 2. Sélectionner les quatre fichiers. Les colonnes doivent garder l’ordre actuel :

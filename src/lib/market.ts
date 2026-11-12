@@ -25,7 +25,7 @@ export type MarketReturn = {
   fetched_at: string;
 };
 export type MarketStatus = { symbol: string; last_attempt_at: string; error: string | null };
-export type MarketData = { returns: MarketReturn[]; statuses: MarketStatus[]; error?: string };
+export type MarketData = { returns: MarketReturn[]; statuses: MarketStatus[]; error?: string; loading?: boolean };
 
 export function symbolForCode(code: string): string | undefined {
   const normalized = code.trim().toUpperCase();
@@ -75,7 +75,8 @@ export function livePositions(reading: Reading | undefined, market: MarketData, 
   const categoryRates = { ...reading?.categoryRates };
   positions.filter(p => p.rateSource === 'market').forEach(p => delete categoryRates[p.category]);
   if (market.error && positions.some(p => p.rateSource === 'market')) warnings.push(market.error);
-  return { positions, categoryRates, warnings, updatedAt: updated.sort()[0] };
+  // Une réponse encore en attente n'est pas une indisponibilité du marché.
+  return { positions, categoryRates, warnings: market.loading ? [] : warnings, updatedAt: updated.sort()[0] };
 }
 
 export function groupedInvestments(positions: Position[]) {
