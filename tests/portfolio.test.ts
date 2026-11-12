@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { aggregate, currentReadings, summarize, validatePortfolio } from '../src/lib/portfolio';
-import { demo } from '../src/lib/demo';
+import { demo } from './fixtures/portfolio';
 import { importSheets, numberFR, type ImportFiles } from '../src/lib/import';
 test('gains pondérés, négatifs et division mensuelle', () => {
   const positions = demo.readings.find(r => r.positions.length)!.positions;

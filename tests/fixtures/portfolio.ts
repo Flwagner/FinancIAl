@@ -1,5 +1,5 @@
-import { defaultGoals, type Portfolio, type Position } from './portfolio';
-// Données fictives, jamais issues du Google Sheet personnel.
+import { defaultGoals, type Portfolio, type Position } from '../../src/lib/portfolio';
+// Jeu de données fictives réservé aux tests, jamais chargé par l'application.
 const positions: Position[] = [
   ['Horizon Pierre', 'SCPI', 'Direct', 28000, 6.5], ['Métropole Europe', 'SCPI', 'Direct', 22000, 7.2], ['Avenir Immo', 'SCPI', 'Direct', 18000, 6],
   ['ETF Monde', 'Actions', 'PEA', 24500, 12], ['ETF Europe', 'Actions', 'PEA', 6500, 9], ['Entreprise', 'Actions', 'PEE', 4500, 8],

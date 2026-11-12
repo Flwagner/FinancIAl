@@ -12,7 +12,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Sans configuration Supabase, l’application présente une **démonstration à données fictives**, modifiable en mémoire uniquement. Aucune donnée du Google Sheet personnel n’est incluse dans le dépôt ou le build.
+L’application nécessite une configuration Supabase et une connexion pour afficher le portefeuille. Sans configuration, un message d’erreur est affiché ; aucun portefeuille fictif n’est chargé. Les données fictives sont réservées aux tests et ne sont pas incluses dans l’application. Aucune donnée du Google Sheet personnel n’est incluse dans le dépôt ou le build.
 
 ## Configurer Supabase (étape manuelle)
 
