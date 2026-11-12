@@ -8,3 +8,6 @@
 .market-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:20px;color:var(--muted);font-size:10px;line-height:1.8}.market-toolbar>span{max-width:65%}.market-toolbar button{flex-shrink:0}.editor>p.muted{font-size:11px}.notice ul,.alert ul{margin:0;padding-left:16px}input[readonly]{color:var(--lime);background:#202b1b}input[readonly]:focus{outline-color:#72895b}
 @media(max-width:640px){.market-toolbar{align-items:flex-start;flex-direction:column}.market-toolbar>span{max-width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+.pwa-install{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));right:calc(16px + env(safe-area-inset-right));z-index:30;display:flex;align-items:center;flex-wrap:wrap;gap:10px;max-width:min(380px,calc(100vw - 32px));padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 30px #0006}.pwa-install p{flex-basis:100%;margin:0;font-size:13px;color:var(--muted)}
+@media(display-mode:standalone){body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}.app-shell{min-height:100svh}.pwa-install{display:none}}
+@media(max-width:640px){input,select,textarea{font-size:16px}}
