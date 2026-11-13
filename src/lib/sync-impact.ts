@@ -7,6 +7,8 @@ export type SyncImpact = {
   synced_at: string;
   portfolio_updated_at: string;
   partial: boolean;
+  reference_at?: string | null;
+  reference_changed?: boolean;
 };
 
 // Compare the SAME holdings against two market snapshots, never two portfolios.
@@ -34,5 +36,19 @@ export function applicableImpact(impact: SyncImpact | null | undefined) {
 
 export function impactContextChanged(impact: SyncImpact, rate: number) {
   // An updated timestamp can reflect goals only, not a change to holdings or returns.
-  return !Number.isFinite(rate) || Math.abs(impact.after_rate - rate) > 0.000001;
+  return !!impact.reference_changed || !Number.isFinite(rate) || Math.abs(impact.after_rate - rate) > 0.000001;
+}
+
+export function parisDay(date: string | Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(date));
+}
+
+export function hasDailyReference(impact: SyncImpact) {
+  return !!impact.reference_at && Number.isFinite(Date.parse(impact.reference_at)) && Number.isFinite(Date.parse(impact.synced_at))
+    && parisDay(impact.reference_at) < parisDay(impact.synced_at);
+}
+
+export function dailyImpactLabel(impact: SyncImpact, now = new Date()) {
+  return parisDay(impact.synced_at) === parisDay(now) ? 'aujourd’hui'
+    : `le ${new Date(impact.synced_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`;
 }

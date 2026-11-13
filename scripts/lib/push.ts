@@ -1,8 +1,8 @@
 import webPush from 'web-push';
 import { randomUUID } from 'node:crypto';
-import { calculateSyncImpact, impactPresentation } from '../../src/lib/sync-impact';
-import type { MarketData } from '../../src/lib/market';
-import type { Reading } from '../../src/lib/portfolio';
+import { hasDailyReference, impactPresentation, type SyncImpact } from '../../src/lib/sync-impact';
+import { livePositions, type MarketData } from '../../src/lib/market';
+import { summarize, type Reading } from '../../src/lib/portfolio';
 
 type WeightedPortfolio = { user_id: string; updated_at: string; reading: Reading };
 export type PushContext = { captured_at: string; portfolios: WeightedPortfolio[]; market: MarketData };
@@ -34,11 +34,11 @@ export function isAllowedPushEndpoint(endpoint: string) {
   } catch { return false; }
 }
 
-export function notificationBody(before: number, after: number, partial: boolean) {
+export function notificationBody(before: number, after: number, partial: boolean, referenceChanged = false) {
   const view = impactPresentation(before, after);
   const symbol = view.direction === 'up' ? '🟢' : view.direction === 'down' ? '🔴' : '⚪';
   const arrow = view.direction === 'up' ? '↗' : view.direction === 'down' ? '↘' : '→';
-  return `${symbol} ${view.transition} ${arrow}\n${view.points} · Estimation annuelle${partial ? ' · Synchronisation partielle' : ''}`;
+  return `${symbol} ${view.transition} ${arrow}\n${view.points} aujourd’hui · Estimation annuelle${partial ? ' · Synchronisation partielle' : ''}${referenceChanged ? '\nPlacements modifiés depuis la référence quotidienne.' : ''}`;
 }
 
 export async function finishPushSync(
@@ -49,23 +49,29 @@ export async function finishPushSync(
   const env = options.env || process.env;
   const runId = env.GITHUB_RUN_ID || randomUUID();
   const configured = !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
-  if (configured) webPush.setVapidDetails(env.VAPID_SUBJECT!, env.VAPID_PUBLIC_KEY!, env.VAPID_PRIVATE_KEY!);
+  // The workflow opts in only for its 10:00 Paris trigger, not the runner's clock.
+  // Hourly jobs and manual/local runs still record the daily comparison silently.
+  const notifyEnabled = configured && env.PUSH_NOTIFICATIONS_ENABLED === 'true';
+  if (notifyEnabled) webPush.setVapidDetails(env.VAPID_SUBJECT!, env.VAPID_PUBLIC_KEY!, env.VAPID_PRIVATE_KEY!);
   const send = options.send || webPush.sendNotification;
   let failures = 0;
   for (const portfolio of before.portfolios) {
     const current = after.portfolios.find(p => p.user_id === portfolio.user_id);
     if (!current || current.updated_at !== portfolio.updated_at) continue;
-    const impact = calculateSyncImpact(portfolio.reading, before.market, after.market);
-    const result = await rpc<{ accepted: boolean; subscriptions: Subscription[] }>('record', {
+    const live = livePositions(current.reading, after.market, new Date(after.captured_at));
+    const rate = summarize(live.positions, live.categoryRates).rate;
+    const result = await rpc<{ accepted: boolean; should_notify?: boolean; impact?: SyncImpact; subscriptions: Subscription[] }>('record', {
       user_id: portfolio.user_id, portfolio_updated_at: portfolio.updated_at,
-      synced_at: before.captured_at, run_id: runId, partial, ...impact,
+      synced_at: after.captured_at, run_id: runId, partial, notify_enabled: notifyEnabled, after_rate: rate,
     });
-    if (!result.accepted || impactPresentation(impact.before_rate, impact.after_rate).direction === 'flat') continue;
-    if (!configured) { console.log('Comparatif enregistré ; envoi Push non configuré.'); continue; }
+    if (!result.accepted) continue;
+    if (!result.impact) throw new Error('Migration de la référence quotidienne requise.');
+    if (!notifyEnabled || !result.should_notify || !hasDailyReference(result.impact)) continue;
+    const daily = result.impact;
     for (const subscription of result.subscriptions) {
       if (!isAllowedPushEndpoint(subscription.endpoint)) { failures++; continue; }
       try {
-        await send(subscription, JSON.stringify({ body: notificationBody(impact.before_rate, impact.after_rate, partial) }), {
+        await send(subscription, JSON.stringify({ body: notificationBody(daily.before_rate, daily.after_rate, daily.partial, daily.reference_changed) }), {
           TTL: 3600, timeout: 15_000, urgency: 'normal',
         });
       } catch (error) {

@@ -32,7 +32,7 @@ export async function loadMarketData(): Promise<MarketData> {
   const [returns, statuses, impact] = await Promise.all([
     supabase.from('market_returns').select('*'),
     supabase.from('market_sync_status').select('*'),
-    supabase.from('portfolio_sync_impact').select('before_rate, after_rate, synced_at, portfolio_updated_at, partial').maybeSingle(),
+    supabase.from('portfolio_sync_impact').select('before_rate, after_rate, synced_at, portfolio_updated_at, partial, reference_at, reference_changed').maybeSingle(),
   ]);
   if (returns.error || statuses.error) return { returns: [], statuses: [], error: 'Données de marché indisponibles. Vérifie la migration SQL et la synchronisation ; les taux des relevés sont conservés.' };
   // Older deployments without the optional push migration still show market rates.

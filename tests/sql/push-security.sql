@@ -71,11 +71,15 @@ do $$ declare n integer; begin
   exception when insufficient_privilege then null; end;
 end $$;
 
+reset role;
+insert into public.portfolio_sync_impact(user_id, before_rate, after_rate, portfolio_updated_at, synced_at, partial, run_id)
+select user_id, 8.4, 8.4, updated_at, now() - interval '1 day', false, 'previous-day' from public.portfolios
+where user_id = '00000000-0000-0000-0000-000000000011';
 set local role anon;
 do $$ declare c jsonb; p jsonb; r jsonb; begin
   c := public.push_sync('push-test-only-token-at-least-32-characters','context');
   select value into p from jsonb_array_elements(c->'portfolios') where value->>'user_id' = '00000000-0000-0000-0000-000000000011';
-  p := jsonb_build_object('user_id',p->>'user_id','portfolio_updated_at',p->>'updated_at','synced_at',c->>'captured_at','before_rate',8.4,'after_rate',9.6,'partial',true,'run_id','test-run');
+  p := jsonb_build_object('user_id',p->>'user_id','portfolio_updated_at',p->>'updated_at','synced_at',c->>'captured_at','before_rate',8.4,'after_rate',9.6,'partial',true,'run_id','test-run','notify_enabled',true);
   r := public.push_sync('push-test-only-token-at-least-32-characters','record',p);
   if not (r->>'accepted')::boolean or jsonb_array_length(r->'subscriptions') <> 1 then raise exception 'TEST FAILED: comparison not recorded'; end if;
   if r->'subscriptions'->0->'keys'->>'auth' <> repeat('b',22) then raise exception 'TEST FAILED: subscription changed by stranger'; end if;

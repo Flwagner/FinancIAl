@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateSyncImpact, impactPresentation, applicableImpact, impactContextChanged, type SyncImpact } from '../src/lib/sync-impact';
+import { calculateSyncImpact, impactPresentation, applicableImpact, impactContextChanged, hasDailyReference, parisDay, dailyImpactLabel, type SyncImpact } from '../src/lib/sync-impact';
 import { finishPushSync, isAllowedPushEndpoint, notificationBody, type PushContext, type PushRpc } from '../scripts/lib/push';
 import type { MarketData, MarketReturn } from '../src/lib/market';
 import type { Reading } from '../src/lib/portfolio';
@@ -21,7 +21,7 @@ const performance: MarketReturn = { symbol: 'WPEA.PA', currency: 'EUR', rate: 10
 const beforeMarket: MarketData = { returns: [performance], statuses: [] };
 const afterMarket: MarketData = { returns: [{ ...performance, rate: 12 }], statuses: [] };
 const version = '2026-11-12T12:00:00Z';
-const impact: SyncImpact = { before_rate: 8.4, after_rate: 9.6, portfolio_updated_at: version, synced_at: now.toISOString(), partial: false };
+const impact: SyncImpact = { before_rate: 8.4, after_rate: 9.6, portfolio_updated_at: version, synced_at: now.toISOString(), partial: false, reference_at: '2026-11-12T20:00:00Z' };
 
 test('impact global pondéré, taux manuels/synthèse inclus et portefeuille inchangé', () => {
   const original = JSON.stringify(reading);
@@ -60,7 +60,8 @@ test('carte : conserve la dernière variation et signale un contexte modifié', 
   assert.equal(applicableImpact({ ...impact, before_rate: Infinity }), null);
   const changed = renderToStaticMarkup(createElement(SyncImpactNote, { impact, contextChanged: true }));
   assert.match(changed, /8,4 % → 9,6 %/);
-  assert.match(changed, /variation conservée à titre indicatif/);
+  assert.match(changed, /comparatif est conservé à titre indicatif/);
+  assert.equal(impactContextChanged({ ...impact, reference_changed: true }, 9.6), true);
 });
 
 test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilité', () => {
@@ -68,8 +69,10 @@ test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilit�
   assert.match(up, /8,4 % → 9,6 %/);
   assert.match(up, /capital-change positive/);
   assert.match(up, /arrow-up-right/);
-  assert.match(up, /lors de la dernière synchronisation/);
-  assert.doesNotMatch(up, /variation conservée à titre indicatif/);
+  assert.match(up, /Variation /);
+  assert.match(up, /Référence :/);
+  assert.match(up, /heure de Paris/);
+  assert.doesNotMatch(up, /comparatif est conservé à titre indicatif/);
   const down = renderToStaticMarkup(createElement(SyncImpactNote, { impact: { ...impact, after_rate: 8, partial: true } }));
   assert.match(down, /capital-change negative/);
   assert.match(down, /arrow-down-right/);
@@ -78,6 +81,68 @@ test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilit�
   assert.match(flat, /capital-change muted/);
   assert.match(flat, /0 point/);
 });
+test('référence quotidienne : heure de Paris, été/hiver, initialisation et jour sans job', () => {
+  assert.equal(parisDay('2026-11-12T23:00:00Z'), '2026-11-13');
+  assert.equal(parisDay('2026-07-12T22:00:00Z'), '2026-07-13');
+  assert.equal(parisDay('2026-10-25T00:30:00Z'), '2026-10-25');
+  assert.equal(parisDay('2026-10-25T01:30:00Z'), '2026-10-25');
+  assert.equal(hasDailyReference(impact), true);
+  assert.equal(hasDailyReference({ ...impact, reference_at: impact.synced_at }), false);
+  assert.equal(hasDailyReference({ ...impact, reference_at: null }), false);
+  assert.equal(hasDailyReference({ ...impact, reference_at: 'invalid' }), false);
+  assert.equal(dailyImpactLabel(impact, now), 'aujourd’hui');
+  assert.equal(dailyImpactLabel(impact, new Date('2026-11-14T12:00:00Z')), 'le 13/11/2026');
+  const pending = renderToStaticMarkup(createElement(SyncImpactNote, { impact: { ...impact, reference_at: null } }));
+  assert.match(pending, /Référence quotidienne en cours d’initialisation/);
+  assert.doesNotMatch(pending, /point|→/);
+});
+
+test('job horaire : utilise le comparatif quotidien du serveur, même au retour à zéro', async () => {
+  const keys = webPush.generateVAPIDKeys();
+  const env = { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com', PUSH_NOTIFICATIONS_ENABLED: 'true' };
+  const bodies: string[] = [];
+  let daily = { ...impact, before_rate: 9.52, after_rate: 9.43 };
+  const rpc = (async (operation: string) => operation === 'context' ? { ...context, market: afterMarket } : {
+    accepted: true, impact: daily, should_notify: true,
+    subscriptions: [{ id: 'test', endpoint: 'https://fcm.googleapis.com/test', keys: {} }],
+  }) as PushRpc;
+  const send: typeof webPush.sendNotification = async (_, payload) => {
+    bodies.push(JSON.parse(payload as string).body);
+    return { statusCode: 201, headers: {}, body: '' };
+  };
+  await finishPushSync(rpc, context, false, { env, send });
+  daily = { ...daily, after_rate: 9.48 };
+  await finishPushSync(rpc, context, false, { env, send });
+  daily = { ...daily, after_rate: 9.52 };
+  await finishPushSync(rpc, context, false, { env, send });
+  assert.match(bodies[0], /−0,09 point aujourd’hui/);
+  assert.match(bodies[1], /9,52 % → 9,48 %/);
+  assert.match(bodies[1], /−0,04 point aujourd’hui/);
+  assert.match(bodies[2], /0 point aujourd’hui/);
+});
+
+test('jobs silencieux : enregistrement sans notification ni demande de livraison', async () => {
+  const keys = webPush.generateVAPIDKeys();
+  const base = { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com' };
+  let records = 0;
+  let sends = 0;
+  const rpc = (async (operation: string, payload?: { notify_enabled: boolean }) => {
+    if (operation === 'context') return { ...context, market: afterMarket };
+    records++;
+    assert.equal(payload?.notify_enabled, false);
+    // Even an inconsistent server response cannot bypass the local opt-in.
+    return { accepted: true, impact, should_notify: true, subscriptions: [{ endpoint: 'https://fcm.googleapis.com/test' }] };
+  }) as PushRpc;
+  for (const flag of [undefined, 'false', 'TRUE', '']) {
+    await finishPushSync(rpc, context, false, {
+      env: { ...base, PUSH_NOTIFICATIONS_ENABLED: flag },
+      send: async () => { sends++; throw new Error('must not send'); },
+    });
+  }
+  assert.equal(records, 4);
+  assert.equal(sends, 0);
+});
+
 test('notifications : contenu sans montants, couleur symbolique, mention partielle', () => {
   assert.match(notificationBody(9.52, 9.68, false), /🟢 9,52 % → 9,68 % ↗/);
   assert.match(notificationBody(9.52, 9.41, true), /🔴.*↘\n−0,11 point.*Synchronisation partielle/);
@@ -94,12 +159,12 @@ test('job : enregistre même sans VAPID, ignore un portefeuille édité entre-te
   const records: object[] = [];
   const rpc = (async (operation: string, payload?: object) => {
     if (operation === 'context') return { ...context, market: afterMarket };
-    records.push(payload!); return { accepted: true, subscriptions: [] };
+    records.push(payload!); return { accepted: true, impact, should_notify: false, subscriptions: [] };
   }) as PushRpc;
   await finishPushSync(rpc, context, true, { env: {} });
   assert.equal(records.length, 1);
   assert.equal((records[0] as SyncImpact).partial, true);
-  assert.equal((records[0] as SyncImpact).before_rate, 8.4);
+  assert.equal('before_rate' in records[0], false);
   assert.equal((records[0] as SyncImpact).after_rate, 9.6);
   await finishPushSync(rpc, { ...context, portfolios: [{ ...context.portfolios[0], updated_at: 'other' }] }, false, { env: {} });
   assert.equal(records.length, 1);
@@ -119,11 +184,11 @@ test('job : envoie un récapitulatif par appareil, nettoie les 410 sans afficher
   const subscriptions = ['ok', 'gone'].map(id => ({ id, endpoint: `https://fcm.googleapis.com/${id}`, keys: { p256dh: 'test', auth: 'test' } }));
   const rpc = (async (operation: string, payload?: { id?: string }) => {
     if (operation === 'context') return { ...context, market: afterMarket };
-    if (operation === 'record') return { accepted: true, subscriptions };
+    if (operation === 'record') return { accepted: true, impact: { ...impact, partial: true, reference_changed: true }, should_notify: true, subscriptions };
     expired.push(payload!.id!); return {};
   }) as PushRpc;
   await finishPushSync(rpc, context, true, {
-    env: { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com' },
+    env: { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com', PUSH_NOTIFICATIONS_ENABLED: 'true' },
     send: async (subscription, payload) => {
       sent.push(JSON.parse(payload as string).body);
       if (subscription.endpoint.endsWith('/gone')) throw { statusCode: 410 };
@@ -132,15 +197,17 @@ test('job : envoie un récapitulatif par appareil, nettoie les 410 sans afficher
   });
   assert.equal(sent.length, 2);
   assert.match(sent[0], /Synchronisation partielle/);
+  assert.match(sent[0], /aujourd’hui/);
+  assert.match(sent[0], /Placements modifiés/);
   assert.deepEqual(expired, ['gone']);
 });
 
-test('job : stabilité affichée = zéro push même avec des abonnements et VAPID', async () => {
+test('job : pas de Push si le serveur constate un taux déjà notifié', async () => {
   const keys = webPush.generateVAPIDKeys();
   let sends = 0;
-  const rpc = (async (operation: string) => operation === 'context' ? context : { accepted: true, subscriptions: [{ endpoint: 'https://fcm.googleapis.com/test' }] }) as PushRpc;
+  const rpc = (async (operation: string) => operation === 'context' ? context : { accepted: true, impact, should_notify: false, subscriptions: [{ endpoint: 'https://fcm.googleapis.com/test' }] }) as PushRpc;
   await finishPushSync(rpc, context, false, {
-    env: { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com' },
+    env: { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com', PUSH_NOTIFICATIONS_ENABLED: 'true' },
     send: async () => { sends++; throw new Error('must not send'); },
   });
   assert.equal(sends, 0);
