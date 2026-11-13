@@ -48,7 +48,7 @@ export default function App() {
     setPassword(''); setLoading(false);
     if (error) setError(errorMessage(error)); else setLogin(false);
   }
-  async function save(next: Portfolio) { const updatedAt = await savePortfolio(next); setData({ ...structuredClone(next), updatedAt }); }
+  async function save(next: Portfolio) { const updatedAt = await savePortfolio(next, data ?? undefined); setData({ ...structuredClone(next), updatedAt }); }
   async function signOut() {
     if (supabase && user) { const { error } = await supabase.auth.signOut(); if (error) { setError(errorMessage(error)); return; } }
     setData(null); setUser(null); setTab('dashboard');

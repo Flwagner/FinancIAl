@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { defaultGoals, normalizeGoals, validatePortfolio, type Portfolio } from './portfolio';
+import { defaultGoals, normalizeGoals, type Portfolio } from './portfolio';
+import { portfolioSaveValues } from './portfolio-save';
 import type { MarketData } from './market';
 import type { SyncImpact } from './sync-impact';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,15 +14,12 @@ export async function loadPortfolio(): Promise<Portfolio | null> {
   const portfolio = data.data as Portfolio;
   return { ...portfolio, goals: normalizeGoals(portfolio.goals), updatedAt: data.updated_at };
 }
-export async function savePortfolio(data: Portfolio) {
+export async function savePortfolio(data: Portfolio, previous?: Portfolio) {
   if (!supabase) throw new Error('Supabase non configuré.');
-  data = { ...data, goals: normalizeGoals(data.goals) };
-  validatePortfolio(data);
+  const values = portfolioSaveValues(data, previous);
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) throw new Error('Connexion requise.');
-  // La date de fraîcheur vient de la ligne en BDD, pas du document financier.
-  const { updatedAt: _, ...document } = data;
-  const { data: saved, error } = await supabase.from('portfolios').upsert({ user_id: user.id, data: document, updated_at: new Date().toISOString() }).select('updated_at').single();
+  const { data: saved, error } = await supabase.from('portfolios').upsert({ user_id: user.id, ...values }).select('updated_at').single();
   if (error) throw error;
   return saved.updated_at as string;
 }

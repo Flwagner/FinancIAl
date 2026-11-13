@@ -12,7 +12,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-L’application nécessite une configuration Supabase et une connexion pour afficher le portefeuille. Sans configuration, un message d’erreur est affiché ; aucun portefeuille fictif n’est chargé. Les données fictives sont réservées aux tests et ne sont pas incluses dans l’application. Aucune donnée du Google Sheet personnel n’est incluse dans le dépôt ou le build.
+L’application nécessite une configuration Supabase et une connexion pour afficher le portefeuille. Sans configuration, un message d’erreur est affiché ; aucun portefeuille fictif n’est chargé. Les données fictives sont réservées aux tests et ne sont pas incluses dans l’application.
 
 ## Installer sur smartphone (PWA)
 
@@ -41,36 +41,16 @@ insert into public.portfolio_owner(user_id) values ('UUID_DE_TON_COMPTE');
 
 Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques. V1 personnelle : éviter l’édition simultanée sur plusieurs appareils (la dernière sauvegarde gagne). La synchronisation de base ne connaît que les symboles publics. Si le comparatif/Push est activé, GitHub Actions reçoit aussi les **poids relatifs et taux nécessaires**, mais jamais les montants en euros, noms des placements, objectifs ou historique. Aucun stockage local persistant des finances ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
 
-## Ancien import Google Sheet (hors interface)
-
-L'import Google Sheets a été retiré de l'onglet **Saisie des données**. Le parseur reste disponible dans `src/lib/import.ts` pour les tests et la compatibilité des anciens imports. Son fonctionnement historique est décrit ci-dessous :
-
-1. Télécharger séparément les onglets Évolution, Portefeuille, SCPI et Actions via Fichier → Télécharger → CSV. Ne pas rendre le Sheet public.
-2. Sélectionner les quatre fichiers. Les colonnes doivent garder l’ordre actuel :
-   - Évolution : Période, Montant (les colonnes de synthèse à droite sont ignorées).
-   - Portefeuille : Support, Taux, Montant, Annuel, Mensuel, Code.
-   - SCPI : Nom, Montant, Rendement.
-   - Actions : Nom, Montant, Code, Rendement, Support, Dividende moyen annualisé.
-3. Indiquer la **date du détail actuel** et la date **à partir de laquelle les valeurs sont des projections**. Ces dates sont explicites : le programme ne les déduit pas de la date du jour.
-4. Prévisualiser et vérifier les relevés. Les valeurs vides d’Évolution sont ignorées. Les dates françaises, espaces de milliers et virgules décimales sont pris en charge.
-5. Exporter une sauvegarde si nécessaire, puis confirmer le remplacement.
-
-Les totaux SCPI/actions sont rapprochés avec le détail (tolérance 0,02 €). Une différence bloque l’import. Le détail doit correspondre au total d’Évolution pour la date choisie, avec une tolérance de 1 € liée aux arrondis. L’historique global n’est **pas** artificiellement décliné par placement.
-
-Les colonnes I:L de l'onglet Actions (Nom, Montant, Code, Rendement) servent à remplacer la ligne ETF Monde par WPEA et DCAM. Leur somme doit correspondre au montant agrégé. Les deux lignes conservent le regroupement d'affichage « ETF Monde » ; celui-ci n'ajoute jamais de capital. Sans ces colonnes, ETF Monde reste agrégé avec un avertissement et un taux manuel, à décomposer avant de pouvoir l'automatiser. Les codes reconnus activent le mode marché automatiquement ; CGI reste manuel. Le dividende annualisé manuel JEQP n'est pas ajouté au rendement de marché (déjà distributions comprises).
-
-Les fichiers ne sont transmis nulle part avant confirmation ; la confirmation sauvegarde uniquement le résultat dans ton Supabase. Ne jamais committer les exports privés (`imports/` est ignoré).
-
 ## Situation actuelle et historique mensuel
 
-Le dashboard et les objectifs affichent les placements du dernier relevé détaillé disponible dans `portfolios.data.readings`, quelle que soit sa date. Le caractère projeté du point global ne masque pas les placements associés lors de l'import. Aucun nouveau champ ni changement du format de la BDD n'est nécessaire.
+Le dashboard et les objectifs affichent les placements du dernier relevé détaillé disponible dans `portfolios.data.readings`, quelle que soit sa date. Le caractère projeté du point global ne masque pas les placements associés.
 
 Seule la courbe utilise les totaux globaux datés du premier jour de chaque mois. Les détails plus récents restent visibles dans le dashboard sans ajouter de point quotidien à la courbe. Les montants sont relus toutes les 60 secondes et au retour sur la fenêtre ; les taux de marché toutes les 5 minutes.
 
 ## Calculs V1
 
 - Gain annuel estimé = somme des montants × taux annuel / 100. Mensuel = annuel / 12.
-- Les nouveaux imports recalculent les taux Actions et SCPI depuis les lignes détaillées. **JEQP est inclus** dans la moyenne pondérée Actions, contrairement à l'ancienne formule du Sheet. Les taux de synthèse hérités sont ignorés dès qu'une catégorie contient un placement en mode marché. Les autres taux de synthèse restent modifiables dans chaque relevé.
+- Les taux Actions et SCPI sont calculés depuis les placements détaillés. **JEQP est inclus** dans la moyenne pondérée Actions. Les taux de synthèse sont ignorés dès qu'une catégorie contient un placement en mode marché. Les autres taux de synthèse restent modifiables dans chaque relevé.
 - ETF Monde : moyenne pondérée des performances WPEA/DCAM par leurs montants, pas moyenne simple.
 - Rendement global = gain annuel estimé / capital détaillé.
 - Total en tête = somme des derniers montants détaillés disponibles, indépendamment des totaux mensuels ; répartitions et estimations utilisent ces mêmes placements et les derniers taux de marché disponibles.
@@ -81,7 +61,7 @@ Seule la courbe utilise les totaux globaux datés du premier jour de chaque mois
 
 ### Source et méthode
 
-Le fournisseur initial est **Yahoo Finance**, via son endpoint chart non officiel. Registre : WPEA.PA, DCAM.PA, PCEU.PA, PAEEM.PA, PAASI.PA et JEQP.L, ainsi que GLD et BTC-EUR pour conserver les automatismes or/bitcoin du Sheet. L'adaptateur est isolé dans `scripts/lib/yahoo.ts` pour permettre un remplacement par une API contractuelle. Yahoo peut changer son accès ou appliquer des quotas : ce service n'est pas garanti. Vérifier ses conditions pour l'usage personnel.
+Le fournisseur initial est **Yahoo Finance**, via son endpoint chart non officiel. Registre : WPEA.PA, DCAM.PA, PCEU.PA, PAEEM.PA, PAASI.PA et JEQP.L, ainsi que GLD et BTC-EUR pour l'or et le bitcoin. L'adaptateur est isolé dans `scripts/lib/yahoo.ts` pour permettre un remplacement par une API contractuelle. Yahoo peut changer son accès ou appliquer des quotas : ce service n'est pas garanti. Vérifier ses conditions pour l'usage personnel.
 
 La synchronisation récupère deux ans de clôtures et utilise `adjusted_close`, ajusté des divisions et distributions selon Yahoo. Performance = `(clôture ajustée finale / clôture ajustée initiale − 1) × 100`, sans ajout de dividende manuel. Il s'agit d'une approximation de rendement total, distributions réinvesties, dépendante de la qualité fournisseur, pas d'un revenu encaissé ni d'une prévision.
 
@@ -89,7 +69,6 @@ La synchronisation récupère deux ans de clôtures et utilise `adjusted_close`,
 - Début : premier jour coté à partir de **la date de fin moins 365 jours**, au maximum 7 jours après la cible. Pas d'annualisation artificielle si l'historique est insuffisant.
 - Un cours de clôture vieux de plus de 7 jours bloque le calcul.
 - Devise vérifiée pour chaque instrument. JEQP.L est coté en **GBp** ; ne pas le remplacer par le JEPQ américain. Les pourcentages sont en devise de cotation : **pas de conversion de performance en EUR**, et pas d'effet de change ajouté au portefeuille. Les montants restent ceux saisis en euros.
-- L'approximation peut différer de Google Finance : clôture précédente au lieu du cours intraday, distributions réinvesties et référence glissante rattachée à la dernière clôture.
 
 ### Tables et sécurité
 
