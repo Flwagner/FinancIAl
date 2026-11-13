@@ -3,6 +3,8 @@ import { defaultGoals, normalizeGoals, type Portfolio } from './portfolio';
 import { portfolioSaveValues } from './portfolio-save';
 import type { MarketData } from './market';
 import type { SyncImpact } from './sync-impact';
+import type { History } from './stock-simulation';
+import type { MarketPrice } from './market';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
@@ -24,6 +26,24 @@ export async function savePortfolio(data: Portfolio, previous?: Portfolio) {
   return saved.updated_at as string;
 }
 export const emptyPortfolio: Portfolio = { readings: [], goals: defaultGoals };
+
+// Pagination par instrument : ne pas tronquer silencieusement au plafond REST.
+export async function loadPriceHistory(symbols: string[], signal?: AbortSignal): Promise<History> {
+  const client = supabase;
+  if (!client) throw new Error('Supabase non configuré.');
+  const entries = await Promise.all([...new Set(symbols)].map(async symbol => {
+    const prices: MarketPrice[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const query = client.from('market_prices').select('date, close, adjusted_close').eq('symbol', symbol).order('date').range(offset, offset + 499);
+      const { data, error } = await (signal ? query.abortSignal(signal) : query);
+      if (error) throw error;
+      prices.push(...(data || []));
+      if (!data || data.length < 500) break;
+    }
+    return [symbol, prices] as const;
+  }));
+  return Object.fromEntries(entries);
+}
 
 export async function loadMarketData(): Promise<MarketData> {
   if (!supabase) return { returns: [], statuses: [] };

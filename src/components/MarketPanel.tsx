@@ -8,8 +8,9 @@ import Dashboard from './Dashboard';
 import Editor from './Editor';
 import SidebarGoals from './SidebarGoals';
 import PushNotifications from './PushNotifications';
+import StockPortfolio from './StockPortfolio';
 
-export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor'; sidebar: HTMLDivElement | null }) {
+export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor' | 'stocks'; sidebar: HTMLDivElement | null }) {
   const [market, setMarket] = useState<MarketData>({ returns: [], statuses: [], loading: true });
   useEffect(() => {
     let active = true;
@@ -32,7 +33,7 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
   }
   return <>
     {sidebar && createPortal(<div className={tab === 'dashboard' ? 'sidebar-goals-dashboard' : undefined}><SidebarGoals data={data} market={market} onSave={save} /></div>, sidebar)}
-    <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR</span><PushNotifications /></div>
-    {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : <Editor data={data} onSave={save} market={market} />}
+    <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>{tab === 'stocks' ? 'Marché · Yahoo Finance · cours de clôture ajustés · sans conversion EUR' : 'Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR'}</span><PushNotifications /></div>
+    {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : tab === 'stocks' ? <StockPortfolio data={data} market={market} /> : <Editor data={data} onSave={save} market={market} />}
   </>;
 }
