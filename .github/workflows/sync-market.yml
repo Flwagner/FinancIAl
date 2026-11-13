@@ -1,13 +1,10 @@
 name: Synchroniser les rendements de marché
 on:
   schedule:
-    # Toutes les heures de 08:07 à 20:07 incluses en France, été/hiver inclus.
+    # Cron en UTC : 06-19 UTC couvre 08:07-20:07 à Paris été (UTC+2) et hiver (UTC+1).
+    # L'étape "Heure locale" ignore les créneaux hors 08-20h Paris.
     # Éviter la minute 00 : GitHub peut supprimer des runs lors des pics de charge.
-    # Séparer 10:07 pour autoriser le Push sur ce seul déclenchement, même retardé.
-    - cron: '7 8-9,11-20 * * *'
-      timezone: 'Europe/Paris'
-    - cron: '7 10 * * *'
-      timezone: 'Europe/Paris'
+    - cron: '7 6-19 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,21 +16,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Heure locale
+        id: paris
+        run: |
+          hour=$(TZ=Europe/Paris date +%-H)
+          run=true
+          push=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "$hour" -lt 8 ] || [ "$hour" -gt 20 ]; then run=false; fi
+            if [ "$hour" -eq 10 ]; then push=true; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "push=$push" >> "$GITHUB_OUTPUT"
+      - if: steps.paris.outputs.run == 'true'
+        uses: actions/checkout@v4
+      - if: steps.paris.outputs.run == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - name: Synchroniser les clôtures et les performances sur 365 jours
+      - if: steps.paris.outputs.run == 'true'
+        run: npm ci
+      - if: steps.paris.outputs.run == 'true'
+        run: npm test
+      - if: steps.paris.outputs.run == 'true'
+        name: Synchroniser les clôtures et les performances sur 365 jours
         run: npm run market:sync
         env:
           SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           MARKET_SYNC_TOKEN: ${{ secrets.MARKET_SYNC_TOKEN }}
           PUSH_SYNC_TOKEN: ${{ secrets.PUSH_SYNC_TOKEN }}
-          PUSH_NOTIFICATIONS_ENABLED: ${{ github.event_name == 'schedule' && github.event.schedule == '7 10 * * *' }}
+          PUSH_NOTIFICATIONS_ENABLED: ${{ steps.paris.outputs.push }}
           VAPID_PUBLIC_KEY: ${{ vars.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
