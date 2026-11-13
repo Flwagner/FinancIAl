@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateSyncImpact, impactPresentation, applicableImpact, type SyncImpact } from '../src/lib/sync-impact';
+import { calculateSyncImpact, impactPresentation, applicableImpact, impactContextChanged, type SyncImpact } from '../src/lib/sync-impact';
 import { finishPushSync, isAllowedPushEndpoint, notificationBody, type PushContext, type PushRpc } from '../scripts/lib/push';
 import type { MarketData, MarketReturn } from '../src/lib/market';
 import type { Reading } from '../src/lib/portfolio';
@@ -47,11 +47,20 @@ test('présentation : hausse, baisse, zéro et arrondis du taux affiché', () =>
   assert.equal(impactPresentation(9, 11).points, '+2 points');
   assert.equal(impactPresentation(-9.525, -9.524).points, '+0,01 point');
 });
-test('carte : masque les comparatifs obsolètes après édition ou chargement incohérent', () => {
-  assert.equal(applicableImpact(impact, version, 9.6), impact);
-  assert.equal(applicableImpact(impact, '2026-11-13T12:00:00Z', 9.6), null);
-  assert.equal(applicableImpact(impact, version, 8.4), null);
-  assert.equal(applicableImpact(undefined, version, 9.6), null);
+test('carte : conserve la dernière variation et signale un contexte modifié', () => {
+  assert.equal(applicableImpact(impact), impact);
+  assert.equal(impactContextChanged(impact, 9.6), false);
+  assert.equal(impactContextChanged(impact, 8.4), true);
+  assert.equal(impactContextChanged(impact, NaN), true);
+  // A goals-only save changes the timestamp, but must not trigger a warning.
+  assert.equal(impactContextChanged({ ...impact, portfolio_updated_at: '2026-11-13T12:00:00Z' }, 9.6), false);
+  assert.equal(applicableImpact(undefined), null);
+  assert.equal(applicableImpact(null), null);
+  assert.equal(applicableImpact({ ...impact, after_rate: NaN }), null);
+  assert.equal(applicableImpact({ ...impact, before_rate: Infinity }), null);
+  const changed = renderToStaticMarkup(createElement(SyncImpactNote, { impact, contextChanged: true }));
+  assert.match(changed, /8,4 % → 9,6 %/);
+  assert.match(changed, /variation conservée à titre indicatif/);
 });
 
 test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilité', () => {
@@ -59,7 +68,8 @@ test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilit�
   assert.match(up, /8,4 % → 9,6 %/);
   assert.match(up, /capital-change positive/);
   assert.match(up, /arrow-up-right/);
-  assert.match(up, /depuis la dernière synchronisation/);
+  assert.match(up, /lors de la dernière synchronisation/);
+  assert.doesNotMatch(up, /variation conservée à titre indicatif/);
   const down = renderToStaticMarkup(createElement(SyncImpactNote, { impact: { ...impact, after_rate: 8, partial: true } }));
   assert.match(down, /capital-change negative/);
   assert.match(down, /arrow-down-right/);

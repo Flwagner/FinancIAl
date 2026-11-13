@@ -27,8 +27,12 @@ export function impactPresentation(before: number, after: number) {
   return { direction, points, transition: `${percent(before)} → ${percent(after)}` };
 }
 
-export function applicableImpact(impact: SyncImpact | null | undefined, updatedAt: string | undefined, rate: number) {
-  if (!impact || !updatedAt || !Number.isFinite(impact.before_rate) || !Number.isFinite(impact.after_rate)) return null;
-  if (Date.parse(impact.portfolio_updated_at) !== Date.parse(updatedAt) || Math.abs(impact.after_rate - rate) > 0.000001) return null;
+export function applicableImpact(impact: SyncImpact | null | undefined) {
+  if (!impact || !Number.isFinite(impact.before_rate) || !Number.isFinite(impact.after_rate)) return null;
   return impact;
+}
+
+export function impactContextChanged(impact: SyncImpact, rate: number) {
+  // An updated timestamp can reflect goals only, not a change to holdings or returns.
+  return !Number.isFinite(rate) || Math.abs(impact.after_rate - rate) > 0.000001;
 }
