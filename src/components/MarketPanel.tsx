@@ -31,8 +31,8 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
     await onSave({ ...next, readings });
   }
   return <>
-    {sidebar && createPortal(<SidebarGoals data={data} market={market} onSave={save} />, sidebar)}
-    <div className="market-toolbar"><span>Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR</span><PushNotifications /></div>
+    {sidebar && createPortal(<div className={tab === 'dashboard' ? 'sidebar-goals-dashboard' : undefined}><SidebarGoals data={data} market={market} onSave={save} /></div>, sidebar)}
+    <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR</span><PushNotifications /></div>
     {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : <Editor data={data} onSave={save} market={market} />}
   </>;
 }
