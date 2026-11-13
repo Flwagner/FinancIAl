@@ -1,6 +1,6 @@
 'use client';
 import { ArrowUpRight, TrendingUp, Wallet, ArrowDownRight, CircleDollarSign } from 'lucide-react';
-import { aggregate, currentReadings, currentSnapshot, monthlyReadings, euro, percent, summarize, type Portfolio } from '@/lib/portfolio';
+import { aggregate, currentReadings, currentSnapshot, evolutionReadings, euro, percent, summarize, type Portfolio } from '@/lib/portfolio';
 import { Distribution, Evolution, Rates } from './Charts';
 import { groupedInvestments, livePositions, type MarketData } from '@/lib/market';
 import { applicableImpact, impactContextChanged } from '@/lib/sync-impact';
@@ -8,12 +8,12 @@ import SyncImpactNote from './SyncImpactNote';
 import { annualStockPerformance } from '@/lib/stock-simulation';
 export default function Dashboard({ data, market = { returns: [], statuses: [] } }: { data: Portfolio; market?: MarketData }) {
   const detailed = currentSnapshot(data);
-  const history = monthlyReadings(data.readings);
   const live = livePositions(detailed, market);
   const positions = live.positions;
   const stats = summarize(positions, live.categoryRates);
   const impact = applicableImpact(market.impact);
   const total = stats.total;
+  const history = evolutionReadings(data.readings, total);
   const baseline = currentReadings(history).actual;
   const change = baseline && detailed ? total - baseline.total : null;
   const groups = aggregate(positions, 'category');

@@ -37,6 +37,12 @@ export function currentSnapshot(data: Portfolio) {
 export function monthlyReadings(readings: Reading[]) {
   return readings.filter(r => r.date.endsWith('-01'));
 }
+export function evolutionReadings(readings: Reading[], currentTotal: number) {
+  const history = monthlyReadings(readings);
+  const { projection } = currentReadings(history);
+  // La projection courante reflète le même portefeuille que la carte patrimoine.
+  return history.map(reading => reading === projection ? { ...reading, total: currentTotal } : reading);
+}
 export function validatePortfolio(data: Portfolio) {
   const dates = new Set<string>();
   for (const r of data.readings) {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregate, currentReadings, currentSnapshot, defaultGoals, monthlyReadings, normalizeGoals, summarize, validatePortfolio } from '../src/lib/portfolio';
+import { aggregate, currentReadings, currentSnapshot, defaultGoals, evolutionReadings, monthlyReadings, normalizeGoals, summarize, validatePortfolio } from '../src/lib/portfolio';
 import { demo } from './fixtures/portfolio';
 test('progression : comparaison au dernier point mensuel réel validé de la courbe', () => {
   const readings = [
@@ -16,6 +16,22 @@ test('progression : comparaison au dernier point mensuel réel validé de la cou
   assert.equal(currentReadings(monthlyReadings([readings[3]])).actual, undefined);
   assert.equal(currentReadings(monthlyReadings([])).actual, undefined);
   assert.equal(currentReadings(monthlyReadings([...readings].reverse())).actual?.id, 'nov');
+});
+test('la projection de la courbe suit le patrimoine actuel sans modifier les relevés', () => {
+  const readings = [
+    { id: 'nov', date: '2026-11-01', projected: false, total: 247598, positions: [] },
+    { id: 'daily', date: '2026-11-13', projected: false, total: 248504, positions: [] },
+    { id: 'dec', date: '2026-12-01', projected: true, total: 248614, positions: [] },
+  ];
+  const original = structuredClone(readings);
+  const history = evolutionReadings(readings, 248504);
+  assert.equal(currentReadings(history).projection?.total, 248504);
+  assert.equal(currentReadings(history).actual?.total, 247598);
+  assert.equal(history.length, 2);
+  assert.equal(currentReadings(evolutionReadings(readings, 0)).projection?.total, 0);
+  assert.deepEqual(evolutionReadings([readings[0]], 248504), [readings[0]]);
+  assert.deepEqual(evolutionReadings([], 248504), []);
+  assert.deepEqual(readings, original);
 });
 test('la cible mensuelle est toujours calculée depuis la cible annuelle', () => {
   const original = { capital: 250000, annual: 48000, monthly: 3000 };
