@@ -1,4 +1,4 @@
-import { symbolForCode } from './market';
+import { isKnownMarketCode } from './market';
 export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market'; group?: string; rateAsOf?: string };
 export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number> };
 export type Goals = { capital: number; annual: number; monthly: number };
@@ -47,7 +47,7 @@ export function validatePortfolio(data: Portfolio) {
     for (const p of r.positions) {
       if (!p.name.trim() || !p.category.trim() || !Number.isFinite(p.amount) || p.amount < 0 || !Number.isFinite(p.rate)) throw new Error('Placement incomplet ou montant/taux invalide.');
       if (p.rateSource && !['manual', 'market'].includes(p.rateSource)) throw new Error('Source du rendement invalide.');
-      if (p.rateSource === 'market' && !symbolForCode(p.code)) throw new Error(`Cotation automatique non reconnue : ${p.code}.`);
+      if (p.rateSource === 'market' && !isKnownMarketCode(p.code)) throw new Error(`Cotation automatique non reconnue : ${p.code}.`);
     }
     if (r.positions.length && Math.abs(summarize(r.positions).total - r.total) > 0.02) throw new Error('Le détail ne correspond pas au total.');
   }

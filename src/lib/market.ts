@@ -2,15 +2,20 @@ import type { Position, Reading } from './portfolio';
 import type { SyncImpact } from './sync-impact';
 
 export const marketInstruments = [
-  { symbol: 'WPEA.PA', code: 'EPA:WPEA', name: 'iShares MSCI World Swap PEA', currency: 'EUR' },
-  { symbol: 'DCAM.PA', code: 'EPA:DCAM', name: 'Amundi PEA Monde', currency: 'EUR' },
-  { symbol: 'PCEU.PA', code: 'EPA:PCEU', name: 'Amundi PEA MSCI Europe', currency: 'EUR' },
-  { symbol: 'PAEEM.PA', code: 'EPA:PAEEM', name: 'Amundi PEA Émergent', currency: 'EUR' },
-  { symbol: 'PAASI.PA', code: 'EPA:PAASI', name: 'Amundi PEA Asie Émergente', currency: 'EUR' },
+  { symbol: 'WPEA.PA', code: 'EPA:WPEA', isin: 'IE0002XZSHO1', name: 'iShares MSCI World Swap PEA', currency: 'EUR' },
+  { symbol: 'DCAM.PA', code: 'EPA:DCAM', isin: 'FR001400U5Q4', name: 'Amundi PEA Monde', currency: 'EUR' },
+  { symbol: 'PCEU.PA', code: 'EPA:PCEU', isin: 'FR0013412038', name: 'Amundi PEA MSCI Europe', currency: 'EUR' },
+  { symbol: 'PAEEM.PA', code: 'EPA:PAEEM', isin: 'FR0013412020', name: 'Amundi PEA Émergent', currency: 'EUR' },
+  { symbol: 'PAASI.PA', code: 'EPA:PAASI', isin: 'FR0013412012', name: 'Amundi PEA Asie Émergente', currency: 'EUR' },
   // JEQP.L est coté en pence sterling, pas en USD et pas l'ETF américain JEPQ.
-  { symbol: 'JEQP.L', code: 'LON:JEQP', name: 'JPM Nasdaq Equity Premium Income UCITS Dist', currency: 'GBp' },
-  { symbol: 'GLD', code: 'NYSEARCA:GLD', name: 'SPDR Gold Shares', currency: 'USD' },
-  { symbol: 'BTC-EUR', code: 'BTCEUR', name: 'Bitcoin / euro', currency: 'EUR' },
+  { symbol: 'JEQP.L', code: 'LON:JEQP', isin: 'IE000U9J8HX9', name: 'JPM Nasdaq Equity Premium Income UCITS Dist', currency: 'GBp' },
+  // Même part EUR hedged capitalisante, cotation de Milan (pas l'ETF américain AGGH).
+  { symbol: 'AGGH.MI', code: 'BIT:AGGH', isin: 'IE00BDBRDM35', name: 'iShares Core Global Aggregate Bond EUR Hedged Acc', currency: 'EUR' },
+  // Identité du placement détenu distincte de la référence de calcul autorisée.
+  { symbol: 'BITC.PA', code: 'EPA:BITC', isin: 'GB00BLD4ZL17', name: 'CoinShares Bitcoin ETP', currency: 'EUR', referenceSymbol: 'BTC-EUR', referenceNote: 'Approximation par le bitcoin spot en euros : hors frais, suivi et horaires propres à CoinShares. Historique annuel BITC.PA inexploitable sur Yahoo.' },
+  { symbol: 'FRSGE001BQW9', code: 'FRSGE001BQW9', isin: 'FRSGE001BQW9', name: 'GOLD/SGE OPEN', currency: 'EUR', referenceSymbol: 'SGLD.MI', referenceNote: 'Approximation par Invesco Physical Gold ETC coté en euros : produit différent de GOLD/SGE OPEN, frais et mécanismes Société Générale non reproduits.' },
+  { symbol: 'BTC-EUR', code: 'BTCEUR', name: 'Bitcoin / euro (spot)', currency: 'EUR' },
+  { symbol: 'SGLD.MI', code: 'BIT:SGLD', isin: 'IE00B579F325', name: 'Invesco Physical Gold ETC', currency: 'EUR' },
 ] as const;
 
 export type MarketPrice = { date: string; close: number; adjusted_close: number };
@@ -30,7 +35,19 @@ export type MarketData = { returns: MarketReturn[]; statuses: MarketStatus[]; im
 
 export function symbolForCode(code: string): string | undefined {
   const normalized = code.trim().toUpperCase();
-  return marketInstruments.find(i => i.code.toUpperCase() === normalized || i.symbol === normalized)?.symbol;
+  return marketInstruments.find(i => i.code.toUpperCase() === normalized || i.symbol === normalized || ('isin' in i && i.isin === normalized))?.symbol;
+}
+
+// Compatibilité des anciens relevés : remplacer le proxy or en USD par la
+// référence EUR autorisée, sans jamais recycler les cours GLD comme ceux de SGLD.
+function correctedLegacySymbol(code: string): string | undefined {
+  const normalized = code.trim().toUpperCase();
+  if (normalized === 'NYSEARCA:GLD' || normalized === 'GLD') return 'FRSGE001BQW9';
+  if (normalized === 'BTCEUR' || normalized === 'BTC-EUR') return 'BITC.PA';
+}
+
+export function isKnownMarketCode(code: string): boolean {
+  return !!(symbolForCode(code) || correctedLegacySymbol(code));
 }
 
 const dayMs = 86_400_000;
@@ -60,11 +77,14 @@ export function livePositions(reading: Reading | undefined, market: MarketData, 
   const warnings: string[] = [];
   const positions = (reading?.positions || []).map(p => {
     if (p.rateSource !== 'market') return p;
-    const symbol = symbolForCode(p.code);
-    const value = market.returns.find(r => r.symbol === symbol);
-    const status = market.statuses.find(s => s.symbol === symbol);
-    if (!value || !Number.isFinite(value.rate) || value.method !== 'adjusted_close_365d') {
-      warnings.push(`${p.name} : rendement automatique indisponible, taux du relevé conservé.`);
+    const symbol = correctedLegacySymbol(p.code) || symbolForCode(p.code);
+    const instrument = marketInstruments.find(i => i.symbol === symbol);
+    const referenceSymbol = instrument && 'referenceSymbol' in instrument ? instrument.referenceSymbol : symbol;
+    if (instrument && 'referenceNote' in instrument) warnings.push(`${p.name} : ${instrument.referenceNote} Référence Yahoo : ${referenceSymbol}.`);
+    const value = market.returns.find(r => r.symbol === referenceSymbol);
+    const status = market.statuses.find(s => s.symbol === referenceSymbol);
+    if (!value || !Number.isFinite(value.rate) || value.method !== 'adjusted_close_365d' || value.currency !== instrument?.currency) {
+      warnings.push(`${p.name} : rendement automatique indisponible, taux du relevé conservé.${correctedLegacySymbol(p.code) ? ' Ancienne référence de substitution ignorée ; corriger le code du placement.' : ''}`);
       return p;
     }
     const age = Date.parse(now.toISOString().slice(0, 10)) - Date.parse(value.as_of);

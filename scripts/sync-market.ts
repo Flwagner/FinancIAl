@@ -27,6 +27,10 @@ async function main() {
   }
   let failures = 0;
   for (const instrument of marketInstruments) {
+    if ('referenceSymbol' in instrument) {
+      console.log(`${instrument.symbol} · approximation via ${instrument.referenceSymbol} · ${instrument.referenceNote}`);
+      continue;
+    }
     try {
       const result = await fetchYahooReturn(instrument.symbol, instrument.currency);
       if (!dryRun) await publish({ symbol: instrument.symbol, ...result });

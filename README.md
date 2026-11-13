@@ -61,7 +61,29 @@ Seule la courbe utilise les totaux globaux datés du premier jour de chaque mois
 
 ### Source et méthode
 
-Le fournisseur initial est **Yahoo Finance**, via son endpoint chart non officiel. Registre : WPEA.PA, DCAM.PA, PCEU.PA, PAEEM.PA, PAASI.PA et JEQP.L, ainsi que GLD et BTC-EUR pour l'or et le bitcoin. L'adaptateur est isolé dans `scripts/lib/yahoo.ts` pour permettre un remplacement par une API contractuelle. Yahoo peut changer son accès ou appliquer des quotas : ce service n'est pas garanti. Vérifier ses conditions pour l'usage personnel.
+Le fournisseur initial est **Yahoo Finance**, via son endpoint chart non officiel. L'adaptateur est isolé dans `scripts/lib/yahoo.ts` pour permettre un remplacement par une API contractuelle. Yahoo peut changer son accès ou appliquer des quotas : ce service n'est pas garanti. Vérifier ses conditions pour l'usage personnel.
+
+Les références sont rattachées aux ISIN BoursoBank (vérification du 13 novembre 2026). La saisie accepte un ISIN, le symbole Yahoo ou le code de cotation du registre :
+
+| ISIN | Placement | Référence suivie |
+|---|---|---|
+| IE0002XZSHO1 | iShares MSCI World Swap PEA | WPEA.PA · EUR |
+| FR001400U5Q4 | Amundi PEA Monde | DCAM.PA · EUR |
+| FR0013412038 | Amundi PEA MSCI Europe | PCEU.PA · EUR |
+| FR0013412020 | Amundi PEA Émergent | PAEEM.PA · EUR |
+| FR0013412012 | Amundi PEA Asie Émergente | PAASI.PA · EUR |
+| IE000U9J8HX9 | JPM Nasdaq Equity Premium Income UCITS USD Dist | JEQP.L · GBp, Londres |
+| IE00BDBRDM35 | iShares Core Global Aggregate Bond EUR Hedged Acc | AGGH.MI · EUR, même part cotée à Milan |
+| GB00BLD4ZL17 | CoinShares Bitcoin ETP | **Approximation : BTC-EUR**, bitcoin spot en euros |
+| FRSGE001BQW9 | GOLD/SGE OPEN, Société Générale | **Approximation : SGLD.MI**, Invesco Physical Gold ETC coté en euros |
+
+L'ISIN JEQP **IE000U9J8HX9** est confirmé par [JPMorgan](https://am.jpmorgan.com/ch/en/asset-management/per/products/jpm-nasdaq-equity-premium-income-active-ucits-etf-usd-dist-ie000u9j8hx9). La référence suivie reste JEQP.L (GBp, Londres). Le même ISIN est aussi coté en EUR sous JEQP.DE (Xetra) et JEPQ.MI (Milan), mais aucune bascule de place ou de devise n'est effectuée ici. **L'ajustement Yahoo de JEQP.L semble incohérent avec les distributions ; son taux n'est pas validé comme rendement total.** Confirmer l'ISIN ne valide pas les cours ajustés. Ne pas ajouter mécaniquement les dividendes au cours ajusté ni corriger leur unité sans vérification émetteur.
+
+Au 13 novembre 2026, Yahoo ne renvoie qu'une séance pour BITC.PA et BITC-XAMS.AS, moins d'un an pour BITC.AS ; les autres cotations EUR testées ne permettent pas non plus le calcul annuel. **BTC-EUR est donc la référence de calcul explicitement choisie**, hors frais, suivi et horaires de CoinShares. GOLD/SGE n'est pas couvert : **SGLD.MI (ISIN IE00B579F325)** fournit deux ans de clôtures d'un ETC adossé à l'or physique, coté en euros. Il ne reproduit pas les frais et mécanismes du produit Société Générale. Aucun cours USD n'est utilisé comme s'il s'agissait d'un rendement EUR.
+
+Les identités des placements restent distinctes des sources : `GB00BLD4ZL17 → BITC.PA → BTC-EUR` et `FRSGE001BQW9 → SGLD.MI`. En base, `reference_symbol` et `reference_note` décrivent explicitement ce lien ; les instruments redirigés sont inactifs pour la synchronisation directe. L'application affiche une mention **Approximation** même lorsque les cours sont à jour. Il s'agit de performances des références, pas de performances exactes des produits détenus. Pas de bascule automatique future vers une autre source : le choix reste explicite. Si la référence échoue, sa dernière valeur valide est conservée avec avertissement ; avant la première synchronisation, le taux du relevé sert de repli.
+
+**Migration des références** : `supabase/migrations/20261113103811_correct_instrument_references.sql`. Elle ajoute les ISIN et références alternatives, désactive GLD sans supprimer son historique, conserve BTC-EUR comme source spot et corrige les codes du dernier relevé détaillé. La ligne « Obligations » sans code reçoit IE00BDBRDM35 et passe en mode **marché**, comme les lignes déjà identifiées AGGH. Aucun montant, taux enregistré, enveloppe ou ancien relevé n'est modifié. Les anciens codes restent lisibles dans les archives ; GLD n'est plus utilisé pour le calcul courant. Pour une nouvelle installation, appliquer cette migration avec le nouveau registre : l'ancien synchroniseur ne peut plus écrire GLD après sa désactivation. Une synchronisation doit ensuite alimenter AGGH.MI et SGLD.MI ; son exécution n'est pas déclenchée par la migration.
 
 La synchronisation récupère deux ans de clôtures et utilise `adjusted_close`, ajusté des divisions et distributions selon Yahoo. Performance = `(clôture ajustée finale / clôture ajustée initiale − 1) × 100`, sans ajout de dividende manuel. Il s'agit d'une approximation de rendement total, distributions réinvesties, dépendante de la qualité fournisseur, pas d'un revenu encaissé ni d'une prévision.
 
@@ -76,7 +98,7 @@ Exécuter `supabase/migrations/001_market.sql` une fois, après `supabase/schema
 
 | Table | Rôle |
 |---|---|
-| `market_instruments` | Registre des huit cotations et devises autorisées |
+| `market_instruments` | Registre des produits, ISIN, cotations, devises et disponibilité ; anciens proxies désactivés |
 | `market_prices` | Clôtures brutes et ajustées par date, source Yahoo |
 | `market_returns` | Dernière performance valide, dates et prix de référence, méthode et date de récupération |
 | `market_sync_status` | Dernière tentative et erreur éventuelle |

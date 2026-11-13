@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateReturn, freezeChangedReadings, groupedInvestments, livePositions, symbolForCode, type MarketPrice, type MarketReturn } from '../src/lib/market';
-import { summarize, type Position, type Reading } from '../src/lib/portfolio';
+import { calculateReturn, freezeChangedReadings, groupedInvestments, livePositions, marketInstruments, symbolForCode, type MarketPrice, type MarketReturn } from '../src/lib/market';
+import { summarize, validatePortfolio, type Position, type Reading } from '../src/lib/portfolio';
 import { parseYahooChart, fetchYahooReturn } from '../scripts/lib/yahoo';
 
 const now = new Date('2026-11-12T06:17:00Z');
@@ -83,8 +83,62 @@ test('mode manuel inchangé et avertissement en cas de données anciennes', () =
 });
 test('cotation JEQP britannique distincte du JEPQ américain', () => {
   assert.equal(symbolForCode('LON:JEQP'), 'JEQP.L');
+  assert.equal(symbolForCode(' ie000u9j8hx9 '), 'JEQP.L');
+  assert.equal(marketInstruments.find(i => 'isin' in i && i.isin === 'IE000U9J8HX9')?.currency, 'GBp');
   assert.equal(symbolForCode(' wpea.pa '), 'WPEA.PA');
   assert.equal(symbolForCode('JEPQ'), undefined);
+});
+test('ISIN des huit placements BoursoBank : identité préservée, références EUR distinctes', () => {
+  const expected = [
+    ['IE0002XZSHO1', 'WPEA.PA'], ['FR001400U5Q4', 'DCAM.PA'],
+    ['FR0013412038', 'PCEU.PA'], ['FR0013412020', 'PAEEM.PA'],
+    ['FR0013412012', 'PAASI.PA'], ['IE00BDBRDM35', 'AGGH.MI'],
+    ['GB00BLD4ZL17', 'BITC.PA'], ['FRSGE001BQW9', 'FRSGE001BQW9'],
+  ];
+  for (const [isin, symbol] of expected) {
+    assert.equal(symbolForCode(` ${isin.toLowerCase()} `), symbol);
+    assert.equal(marketInstruments.find(i => i.symbol === symbol)?.currency, 'EUR');
+  }
+  for (const code of ['GLD', 'NYSEARCA:GLD', 'AGGH']) assert.equal(symbolForCode(code), undefined);
+  assert.equal(symbolForCode('BTC-EUR'), 'BTC-EUR');
+  assert.equal(symbolForCode('IE00B579F325'), 'SGLD.MI');
+  assert.equal(symbolForCode('EPA:BITC'), 'BITC.PA');
+});
+test('les archives restent valides et immuables ; GLD USD ne sert plus de référence', () => {
+  for (const code of ['NYSEARCA:GLD', 'BTCEUR']) {
+    const archived = { ...reading, positions: [{ ...base, code }] };
+    const before = JSON.stringify(archived);
+    const result = livePositions(archived, { returns: [{ ...performance, symbol: 'GLD', currency: 'USD', rate: -25 }], statuses: [] }, now);
+    assert.equal(result.positions[0].rate, base.rate);
+    assert.equal(result.updatedAt, undefined);
+    assert.match(result.warnings.join(' '), /Approximation/);
+    validatePortfolio({ readings: [archived], goals: { capital: 1, annual: 1, monthly: 1 } });
+    assert.equal(JSON.stringify(archived), before);
+  }
+});
+test('approximations explicites BTC-EUR et SGLD.MI : pas de réétiquetage du produit détenu', () => {
+  for (const [code, symbol] of [['GB00BLD4ZL17', 'BTC-EUR'], ['FRSGE001BQW9', 'SGLD.MI'], ['BTCEUR', 'BTC-EUR'], ['NYSEARCA:GLD', 'SGLD.MI']]) {
+    const held = { ...reading, positions: [{ ...base, code }] };
+    const result = livePositions(held, { returns: [{ ...performance, currency: 'EUR', symbol, rate: 7 }], statuses: [] }, now);
+    assert.equal(result.positions[0].rate, 7);
+    assert.equal(result.positions[0].code, code);
+    assert.equal(result.positions[0].rateAsOf, performance.as_of);
+    assert.match(result.warnings[0], /Approximation/);
+    assert.ok(result.warnings[0].includes(symbol));
+    assert.equal(held.positions[0].rate, base.rate);
+    const failed = livePositions(held, { returns: [{ ...performance, currency: 'EUR', symbol, rate: 7 }], statuses: [{ symbol, last_attempt_at: now.toISOString(), error: 'HTTP 429' }] }, now);
+    assert.match(failed.warnings.join(' '), /échec/);
+    const wrongCurrency = livePositions(held, { returns: [{ ...performance, currency: 'USD', symbol, rate: 99 }], statuses: [] }, now);
+    assert.equal(wrongCurrency.positions[0].rate, base.rate);
+    assert.match(wrongCurrency.warnings.join(' '), /indisponible/);
+  }
+});
+test('obligations automatiques : AGGH en EUR remplace le taux manuel et le taux de catégorie', () => {
+  const bonds = { ...reading, positions: [{ ...base, code: 'IE00BDBRDM35', category: 'Obligations' }], categoryRates: { Obligations: 10 } };
+  const result = livePositions(bonds, { returns: [{ ...performance, currency: 'EUR', symbol: 'AGGH.MI', rate: -1.88 }], statuses: [] }, now);
+  assert.equal(result.positions[0].rate, -1.88);
+  assert.equal(result.categoryRates.Obligations, undefined);
+  assert.deepEqual(result.warnings, []);
 });
 const payload = { chart: { error: null, result: [{ meta: { symbol: 'JEQP.L', currency: 'GBp', exchangeTimezoneName: 'Europe/London' }, timestamp: [1762866000], indicators: { quote: [{ close: [100] }], adjclose: [{ adjclose: [95] }] } }] } };
 test('adaptateur Yahoo : vérification de la cotation, devise et prix ajustés', () => {
