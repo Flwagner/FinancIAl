@@ -75,12 +75,13 @@ export function calculateReturn(symbol: string, currency: string, prices: Market
 export function livePositions(reading: Reading | undefined, market: MarketData, now = new Date()) {
   const updated: string[] = [];
   const warnings: string[] = [];
+  const referenceNotes: string[] = [];
   const positions = (reading?.positions || []).map(p => {
     if (p.rateSource !== 'market') return p;
     const symbol = correctedLegacySymbol(p.code) || symbolForCode(p.code);
     const instrument = marketInstruments.find(i => i.symbol === symbol);
     const referenceSymbol = instrument && 'referenceSymbol' in instrument ? instrument.referenceSymbol : symbol;
-    if (instrument && 'referenceNote' in instrument) warnings.push(`${p.name} : ${instrument.referenceNote} Référence Yahoo : ${referenceSymbol}.`);
+    if (instrument && 'referenceNote' in instrument) referenceNotes.push(`${p.name} : ${instrument.referenceNote} Référence Yahoo : ${referenceSymbol}.`);
     const value = market.returns.find(r => r.symbol === referenceSymbol);
     const status = market.statuses.find(s => s.symbol === referenceSymbol);
     if (!value || !Number.isFinite(value.rate) || value.method !== 'adjusted_close_365d' || value.currency !== instrument?.currency) {
@@ -97,7 +98,7 @@ export function livePositions(reading: Reading | undefined, market: MarketData, 
   positions.filter(p => p.rateSource === 'market').forEach(p => delete categoryRates[p.category]);
   if (market.error && positions.some(p => p.rateSource === 'market')) warnings.push(market.error);
   // Une réponse encore en attente n'est pas une indisponibilité du marché.
-  return { positions, categoryRates, warnings: market.loading ? [] : warnings, updatedAt: updated.sort()[0] };
+  return { positions, categoryRates, warnings: market.loading ? [] : warnings, referenceNotes, updatedAt: updated.sort()[0] };
 }
 
 export function groupedInvestments(positions: Position[]) {

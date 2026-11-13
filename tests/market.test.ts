@@ -111,7 +111,7 @@ test('les archives restent valides et immuables ; GLD USD ne sert plus de réfé
     const result = livePositions(archived, { returns: [{ ...performance, symbol: 'GLD', currency: 'USD', rate: -25 }], statuses: [] }, now);
     assert.equal(result.positions[0].rate, base.rate);
     assert.equal(result.updatedAt, undefined);
-    assert.match(result.warnings.join(' '), /Approximation/);
+    assert.match(result.referenceNotes.join(' '), /Approximation/);
     validatePortfolio({ readings: [archived], goals: { capital: 1, annual: 1, monthly: 1 } });
     assert.equal(JSON.stringify(archived), before);
   }
@@ -123,8 +123,9 @@ test('approximations explicites BTC-EUR et SGLD.MI : pas de réétiquetage du pr
     assert.equal(result.positions[0].rate, 7);
     assert.equal(result.positions[0].code, code);
     assert.equal(result.positions[0].rateAsOf, performance.as_of);
-    assert.match(result.warnings[0], /Approximation/);
-    assert.ok(result.warnings[0].includes(symbol));
+    assert.match(result.referenceNotes[0], /Approximation/);
+    assert.ok(result.referenceNotes[0].includes(symbol));
+    assert.deepEqual(result.warnings, []);
     assert.equal(held.positions[0].rate, base.rate);
     const failed = livePositions(held, { returns: [{ ...performance, currency: 'EUR', symbol, rate: 7 }], statuses: [{ symbol, last_attempt_at: now.toISOString(), error: 'HTTP 429' }] }, now);
     assert.match(failed.warnings.join(' '), /échec/);

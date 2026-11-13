@@ -13,6 +13,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const currentRates = livePositions(draft, market);
+  const notices = [...currentRates.referenceNotes, ...currentRates.warnings];
   function updatePosition(index: number, change: Partial<Position>) {
     const positions = draft.positions.map((p, i) => i === index ? {
       ...p, ...change,
@@ -51,7 +52,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
         <td><button className="icon-button" aria-label={`Supprimer ${p.name || 'placement'}`} onClick={() => { const positions = draft.positions.filter((_, j) => i !== j); setDraft({ ...draft, positions, total: summarize(positions).total }); }}><Trash2 size={16} /></button></td>
       </tr>)}</tbody>
     </table></div>
-    {currentRates.warnings.length > 0 && <div className="notice"><ul>{currentRates.warnings.map(w => <li key={w}>{w}</li>)}</ul></div>}
+    {notices.length > 0 && <div className="notice"><ul>{notices.map(w => <li key={w}>{w}</li>)}</ul></div>}
     <button className="text-button" onClick={() => setDraft({ ...draft, positions: [...draft.positions, { id: crypto.randomUUID(), name: '', category: 'SCPI', envelope: 'Direct', code: '', amount: 0, rate: 0 }] })}><Plus size={16} />Ajouter un placement</button>
     {!draft.positions.length && <label className="standalone">Total global (historique ou projection sans détail)<input type="number" min="0" step="0.01" value={draft.total} onChange={e => setDraft({ ...draft, total: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>}
     {!!draft.positions.length && <details><summary>Taux de synthèse par catégorie</summary><p className="muted">Un taux de synthèse remplace les taux détaillés pour les calculs globaux. Laisse vide pour utiliser les taux de chaque placement.</p><div className="form-grid">{[...new Set(draft.positions.map(p => p.category))].map(c => <label key={c}>{c} (%)<input type="number" step="0.001" value={draft.categoryRates?.[c] ?? ''} onChange={e => { const rates = { ...draft.categoryRates }; if (!e.target.value) delete rates[c]; else rates[c] = Number(e.target.value); setDraft({ ...draft, categoryRates: rates }); }} /></label>)}</div></details>}
