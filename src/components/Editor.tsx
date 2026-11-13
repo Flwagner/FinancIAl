@@ -1,9 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Save, Trash2, Check, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { categories, currentSnapshot, euro, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
 import { livePositions, symbolForCode, type MarketData } from '@/lib/market';
 import { errorMessage } from '@/lib/errors';
+const collapsedCategoriesKey = 'financial:editor:collapsed-categories';
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -16,7 +17,24 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set());
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(collapsedCategoriesKey) ?? '[]');
+      if (Array.isArray(stored) && stored.every(category => typeof category === 'string')) {
+        setCollapsedCategories(new Set(stored));
+      }
+    } catch { /* Le stockage peut être indisponible ou contenir une valeur invalide. */ }
+    setPreferencesLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    try {
+      localStorage.setItem(collapsedCategoriesKey, JSON.stringify([...collapsedCategories]));
+    } catch { /* Le repli reste utilisable même sans stockage local. */ }
+  }, [collapsedCategories, preferencesLoaded]);
   const [newPositionId, setNewPositionId] = useState<string | null>(null);
+  const [frozenCategoryOrder, setFrozenCategoryOrder] = useState<string[] | null>(null);
   function addPosition() {
     const id = crypto.randomUUID();
     setNewPositionId(id);
@@ -42,7 +60,9 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     category,
     entries: draft.positions.map((position, index) => ({ position, index })).filter(({ position }) => position.category === category && position.id !== newPositionId),
   })).sort((a, b) =>
-    b.entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0)
+    frozenCategoryOrder
+      ? frozenCategoryOrder.indexOf(a.category) - frozenCategoryOrder.indexOf(b.category)
+      : b.entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0)
     - a.entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0)
   );
   const newEntries = draft.positions.map((position, index) => ({ position, index })).filter(({ position }) => position.id === newPositionId);
@@ -87,7 +107,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
         <td><select aria-label={`Enveloppe ${i + 1}`} value={p.envelope} onChange={e => updatePosition(i, { envelope: e.target.value })}>{envelopes.map(envelope => <option key={envelope}>{envelope}</option>)}</select></td>
         <td><input aria-label={`Code ${i + 1}`} placeholder="ISIN ou TICKER" value={p.code} onChange={e => updatePosition(i, { code: e.target.value })} /></td>
         <td><input aria-label={`Regroupement ${i + 1}`} placeholder="Facultatif" value={p.group || ''} onChange={e => updatePosition(i, { group: e.target.value })} /></td>
-        <td><input aria-label={`Montant ${i + 1}`} type="number" step="0.01" min="0" value={Number.isFinite(p.amount) ? p.amount : ''} onChange={e => updatePosition(i, { amount: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
+        <td><input aria-label={`Montant ${i + 1}`} type="number" step="0.01" min="0" value={Number.isFinite(p.amount) ? p.amount : ''} onFocus={() => setFrozenCategoryOrder(positionGroups.map(group => group.category))} onBlur={() => setFrozenCategoryOrder(null)} onChange={e => updatePosition(i, { amount: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
         <td><select aria-label={`Source du taux ${i + 1}`} value={p.rateSource || 'manual'} onChange={e => updatePosition(i, { rateSource: e.target.value as 'manual' | 'market' })}><option value="manual">Manuel</option><option value="market" disabled={!symbolForCode(p.code)}>Marché · 365 jours</option></select></td>
         <td><input aria-label={`Taux ${i + 1}`} type="number" step="any" readOnly={p.rateSource === 'market'} title={p.rateSource === 'market' ? 'Dernière performance disponible, ou taux de repli du relevé' : 'Taux annuel manuel'} value={Number.isFinite(currentRates.positions[i]?.rate) ? currentRates.positions[i].rate : ''} onChange={e => updatePosition(i, { rate: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
         <td><button className="icon-button" aria-label={`Supprimer ${p.name || 'placement'}`} onClick={() => { const positions = draft.positions.filter((_, j) => i !== j); setDraft({ ...draft, positions, total: summarize(positions).total }); }}><Trash2 size={16} /></button></td>
