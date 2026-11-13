@@ -1,11 +1,12 @@
 name: Synchroniser les rendements de marché
 on:
   schedule:
-    # Toutes les heures de 08:00 à 20:00 incluses en France, été/hiver inclus.
-    # Séparer 10:00 pour autoriser le Push sur ce seul déclenchement, même retardé.
-    - cron: '0 8-9,11-20 * * *'
+    # Toutes les heures de 08:07 à 20:07 incluses en France, été/hiver inclus.
+    # Éviter la minute 00 : GitHub peut supprimer des runs lors des pics de charge.
+    # Séparer 10:07 pour autoriser le Push sur ce seul déclenchement, même retardé.
+    - cron: '7 8-9,11-20 * * *'
       timezone: 'Europe/Paris'
-    - cron: '0 10 * * *'
+    - cron: '7 10 * * *'
       timezone: 'Europe/Paris'
   workflow_dispatch:
 permissions:
@@ -32,7 +33,7 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           MARKET_SYNC_TOKEN: ${{ secrets.MARKET_SYNC_TOKEN }}
           PUSH_SYNC_TOKEN: ${{ secrets.PUSH_SYNC_TOKEN }}
-          PUSH_NOTIFICATIONS_ENABLED: ${{ github.event_name == 'schedule' && github.event.schedule == '0 10 * * *' }}
+          PUSH_NOTIFICATIONS_ENABLED: ${{ github.event_name == 'schedule' && github.event.schedule == '7 10 * * *' }}
           VAPID_PUBLIC_KEY: ${{ vars.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}

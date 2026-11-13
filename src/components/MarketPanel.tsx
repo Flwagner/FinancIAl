@@ -32,7 +32,7 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
     await onSave({ ...next, readings });
   }
   return <>
-    {sidebar && tab === 'editor' && createPortal(<SidebarGoals data={data} market={market} onSave={save} />, sidebar)}
+    {sidebar && createPortal(<div className={tab === 'editor' ? undefined : 'goals-desktop-only'}><SidebarGoals data={data} market={market} onSave={save} /></div>, sidebar)}
     {tab === 'editor' && <div className="market-toolbar"><PushNotifications /></div>}
     {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : tab === 'stocks' ? <StockPortfolio data={data} market={market} /> : <Editor data={data} onSave={save} market={market} />}
     <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>{tab === 'stocks' ? 'Marché · Yahoo Finance · cours de clôture ajustés · sans conversion EUR' : 'Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR'}</span></div>
