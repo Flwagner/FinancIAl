@@ -1,10 +1,13 @@
 'use client';
 import { useState } from 'react';
-import { Plus, Save, Trash2, Check, Download } from 'lucide-react';
+import { Plus, Save, Trash2, Check, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { categories, currentSnapshot, euro, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
 import { livePositions, symbolForCode, type MarketData } from '@/lib/market';
 import { errorMessage } from '@/lib/errors';
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 const blank = (positions: Position[] = []): Reading => ({ id: crypto.randomUUID(), date: today(), projected: false, total: summarize(positions).total, positions: structuredClone(positions) });
 export default function Editor({ data, onSave, market = { returns: [], statuses: [] } }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; market?: MarketData }) {
   const latest = currentSnapshot(data);
@@ -12,8 +15,38 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set());
+  const [newPositionId, setNewPositionId] = useState<string | null>(null);
+  function addPosition() {
+    const id = crypto.randomUUID();
+    setNewPositionId(id);
+    setCollapsedCategories(previous => {
+      const next = new Set(previous);
+      next.delete('Nouveau placement');
+      return next;
+    });
+    setDraft(previous => ({ ...previous, positions: [...previous.positions, { id, name: '', category: 'SCPI', envelope: 'Direct', code: '', amount: 0, rate: 0 }] }));
+  }
+  function toggleCategory(category: string) {
+    setCollapsedCategories(previous => {
+      const next = new Set(previous);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }
   const currentRates = livePositions(draft, market);
   const notices = [...currentRates.referenceNotes, ...currentRates.warnings];
+  const envelopes = [...new Set(['Direct', 'PEA', 'CTO', 'Assurance vie', ...data.readings.flatMap(r => r.positions.map(p => p.envelope)), ...draft.positions.map(p => p.envelope)])].filter(envelope => Boolean(envelope) && !['PEA-PME', 'PER'].includes(envelope));
+  const positionGroups = [...new Set(draft.positions.filter(p => p.id !== newPositionId).map(p => p.category))].map(category => ({
+    category,
+    entries: draft.positions.map((position, index) => ({ position, index })).filter(({ position }) => position.category === category && position.id !== newPositionId),
+  })).sort((a, b) =>
+    b.entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0)
+    - a.entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0)
+  );
+  const newEntries = draft.positions.map((position, index) => ({ position, index })).filter(({ position }) => position.id === newPositionId);
+  const displayedGroups = [...positionGroups, ...(newEntries.length ? [{ category: 'Nouveau placement', entries: newEntries }] : [])];
   function updatePosition(index: number, change: Partial<Position>) {
     const positions = draft.positions.map((p, i) => i === index ? {
       ...p, ...change,
@@ -29,33 +62,39 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
       setMessage(success);
     } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   }
+  function saveCurrentPortfolio() {
+    const date = today();
+    const existing = data.readings.find(r => r.date === date);
+    const reading: Reading = { ...draft, id: existing?.id ?? crypto.randomUUID(), date, projected: false };
+    void persist({ ...data, readings: [...data.readings.filter(r => r.date !== date), reading] }, 'Portefeuille du jour enregistré.');
+  }
   function exportBackup() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a'); a.href = url; a.download = `financial-prive-${today()}.json`; a.click(); URL.revokeObjectURL(url);
   }
-  return <><div className="page-heading"><div><h1>Mes relevés<span>.</span></h1></div><button className="button secondary" onClick={exportBackup}><Download size={16} />Exporter une sauvegarde</button></div>
+  return <><div className="page-heading"><div><h1>Mon portefeuille<span>.</span></h1></div><button className="button secondary" onClick={exportBackup}><Download size={16} />Exporter une sauvegarde</button></div>
     {error && <div className="alert" role="alert">{error}</div>}{message && <div className="notice" role="status"><Check size={16} />{message}</div>}
-    <section className="panel editor"><div className="panel-heading"><div><h2>Relevé périodique</h2><p>Reprends un relevé existant ou crée une nouvelle photographie.</p></div><button className="button secondary" onClick={() => { setDraft({ ...blank(latest?.positions), categoryRates: latest?.categoryRates }); setError(''); setMessage(''); }}><Plus size={16} />Nouveau relevé</button></div>
-    <div className="form-grid"><label>Relevé à modifier<select value={data.readings.some(r => r.id === draft.id) ? draft.id : ''} onChange={e => { const r = data.readings.find(r => r.id === e.target.value); if (r) setDraft(structuredClone(r)); }}><option value="">Nouveau relevé</option>{[...data.readings].sort((a, b) => b.date.localeCompare(a.date)).map(r => <option key={r.id} value={r.id}>{r.date} · {r.projected ? 'Projection' : 'Réel'} · {euro(r.total)}</option>)}</select></label><label>Date du relevé<input type="date" value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })} required /></label><label>Nature<select value={draft.projected ? 'projection' : 'actual'} onChange={e => setDraft({ ...draft, projected: e.target.value === 'projection' })}><option value="actual">Relevé réel</option><option value="projection">Projection (non réalisée)</option></select></label></div>
-    <p className="muted">Saisir un ISIN ou un code de cotation reconnu active le suivi marché. Le cours ajusté Yahoo est une approximation de rendement avec distributions réinvesties, dépendante de la qualité de la source. Pour CoinShares Bitcoin et GOLD/SGE OPEN, une référence alternative en euros est utilisée et signalée ci-dessous. Si ses données manquent, le taux du relevé est conservé avec un avertissement.</p>
+    <section className="panel editor">
+    <p className="muted">Saisir un ISIN ou un code de cotation reconnu active le suivi marché. Le cours ajusté Yahoo est une approximation de rendement avec distributions réinvesties, dépendante de la qualité de la source. Si ses données manquent, le taux du relevé est conservé avec un avertissement.</p>
+    {notices.length > 0 && <div className="notice"><ul>{notices.map(w => <li key={w}>{w}</li>)}</ul></div>}
     <div className="table-scroll"><table>
       <thead><tr><th>Placement</th><th>Classe d’actifs</th><th>Enveloppe</th><th>Code</th><th>Regroupement</th><th>Montant (€)</th><th>Source du taux</th><th>Taux annuel (%)</th><th /></tr></thead>
-      <tbody>{draft.positions.map((p, i) => <tr key={p.id}>
-        <td><input aria-label={`Nom ${i + 1}`} value={p.name} onChange={e => updatePosition(i, { name: e.target.value })} /></td>
+      {displayedGroups.map(({ category, entries }) => <tbody key={category}>
+        <tr className="editor-category"><th scope="rowgroup" colSpan={9}><button type="button" className="editor-category-toggle" aria-expanded={!collapsedCategories.has(category)} onClick={() => toggleCategory(category)}><span>{collapsedCategories.has(category) ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}{category || 'Sans classe d’actifs'}</span><span>{euro(entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0))}</span></button></th></tr>
+        {!collapsedCategories.has(category) && entries.map(({ position: p, index: i }) => <tr key={p.id}>
+        <td><input aria-label={`Nom ${i + 1}`} autoFocus={p.id === newPositionId} value={p.name} onChange={e => updatePosition(i, { name: e.target.value })} /></td>
         <td><select aria-label={`Catégorie ${i + 1}`} value={p.category} onChange={e => updatePosition(i, { category: e.target.value })}>{[...new Set([...categories, p.category])].filter(Boolean).map(c => <option key={c}>{c}</option>)}</select></td>
-        <td><input aria-label={`Enveloppe ${i + 1}`} value={p.envelope} onChange={e => updatePosition(i, { envelope: e.target.value })} /></td>
-        <td><input aria-label={`Code ${i + 1}`} placeholder="ISIN ou EPA:WPEA" value={p.code} onChange={e => updatePosition(i, { code: e.target.value })} /></td>
+        <td><select aria-label={`Enveloppe ${i + 1}`} value={p.envelope} onChange={e => updatePosition(i, { envelope: e.target.value })}>{envelopes.map(envelope => <option key={envelope}>{envelope}</option>)}</select></td>
+        <td><input aria-label={`Code ${i + 1}`} placeholder="ISIN ou TICKER" value={p.code} onChange={e => updatePosition(i, { code: e.target.value })} /></td>
         <td><input aria-label={`Regroupement ${i + 1}`} placeholder="Facultatif" value={p.group || ''} onChange={e => updatePosition(i, { group: e.target.value })} /></td>
         <td><input aria-label={`Montant ${i + 1}`} type="number" step="0.01" min="0" value={Number.isFinite(p.amount) ? p.amount : ''} onChange={e => updatePosition(i, { amount: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
         <td><select aria-label={`Source du taux ${i + 1}`} value={p.rateSource || 'manual'} onChange={e => updatePosition(i, { rateSource: e.target.value as 'manual' | 'market' })}><option value="manual">Manuel</option><option value="market" disabled={!symbolForCode(p.code)}>Marché · 365 jours</option></select></td>
         <td><input aria-label={`Taux ${i + 1}`} type="number" step="any" readOnly={p.rateSource === 'market'} title={p.rateSource === 'market' ? 'Dernière performance disponible, ou taux de repli du relevé' : 'Taux annuel manuel'} value={Number.isFinite(currentRates.positions[i]?.rate) ? currentRates.positions[i].rate : ''} onChange={e => updatePosition(i, { rate: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
         <td><button className="icon-button" aria-label={`Supprimer ${p.name || 'placement'}`} onClick={() => { const positions = draft.positions.filter((_, j) => i !== j); setDraft({ ...draft, positions, total: summarize(positions).total }); }}><Trash2 size={16} /></button></td>
-      </tr>)}</tbody>
+      </tr>)}</tbody>)}
     </table></div>
-    {notices.length > 0 && <div className="notice"><ul>{notices.map(w => <li key={w}>{w}</li>)}</ul></div>}
-    <button className="text-button" onClick={() => setDraft({ ...draft, positions: [...draft.positions, { id: crypto.randomUUID(), name: '', category: 'SCPI', envelope: 'Direct', code: '', amount: 0, rate: 0 }] })}><Plus size={16} />Ajouter un placement</button>
-    {!draft.positions.length && <label className="standalone">Total global (historique ou projection sans détail)<input type="number" min="0" step="0.01" value={draft.total} onChange={e => setDraft({ ...draft, total: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>}
-    {!!draft.positions.length && <details><summary>Taux de synthèse par catégorie</summary><p className="muted">Un taux de synthèse remplace les taux détaillés pour les calculs globaux. Laisse vide pour utiliser les taux de chaque placement.</p><div className="form-grid">{[...new Set(draft.positions.map(p => p.category))].map(c => <label key={c}>{c} (%)<input type="number" step="0.001" value={draft.categoryRates?.[c] ?? ''} onChange={e => { const rates = { ...draft.categoryRates }; if (!e.target.value) delete rates[c]; else rates[c] = Number(e.target.value); setDraft({ ...draft, categoryRates: rates }); }} /></label>)}</div></details>}
-    <div className="editor-footer"><strong>Total : {euro(draft.total)}</strong><div className="actions">{data.readings.some(r => r.id === draft.id) && <button className="button danger" disabled={busy} onClick={() => { if (window.confirm('Supprimer définitivement ce relevé ?')) void persist({ ...data, readings: data.readings.filter(r => r.id !== draft.id) }, 'Relevé supprimé.'); }}>Supprimer le relevé</button>}<button className="button" disabled={busy} onClick={() => void persist({ ...data, readings: [...data.readings.filter(r => r.id !== draft.id), draft] }, 'Relevé enregistré dans Supabase.')}><Save size={16} />{busy ? 'Enregistrement…' : 'Enregistrer le relevé'}</button></div></div></section>
+    <button type="button" className="text-button" onClick={addPosition}><Plus size={16} />Ajouter un placement</button>
+    {!draft.positions.length && <label className="standalone">Total actuel du portefeuille (sans détail)<input type="number" min="0" step="0.01" value={draft.total} onChange={e => setDraft({ ...draft, total: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>}
+    <div className="editor-footer"><strong>Total : {euro(draft.total)}</strong><div className="actions"><button className="button" disabled={busy} onClick={saveCurrentPortfolio}><Save size={16} />{busy ? 'Enregistrement…' : 'Enregistrer mon portefeuille'}</button></div></div></section>
   </>;
 }
