@@ -19,7 +19,9 @@ jobs:
       - name: Heure locale
         id: paris
         run: |
-          hour=$(TZ=Europe/Paris date +%-H)
+          offset=$(( $(TZ=Europe/Paris date +%z | sed 's/00$//') ))
+          utc_hour=$(echo "${{ github.event.schedule }}" | cut -d' ' -f2)
+          hour=$(( utc_hour + offset ))
           run=true
           push=false
           if [ "${{ github.event_name }}" = "schedule" ]; then
