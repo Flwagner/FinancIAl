@@ -49,6 +49,17 @@ test('le dashboard affiche le dernier détail disponible, même associé à un p
   assert.equal(currentSnapshot(data)?.total, 1234);
   assert.equal(currentSnapshot({ ...demo, readings: [] }), undefined);
 });
+test('une saisie réelle reste prioritaire sur une projection future détaillée', () => {
+  const position = demo.readings.find(r => r.positions.length)!.positions[0];
+  const actual = { id: 'actual', date: '2026-11-13', projected: false, total: 2421, positions: [{ ...position, amount: 2421 }] };
+  const projection = { id: 'projection', date: '2026-12-01', projected: true, total: 2398, positions: [{ ...position, amount: 2398 }] };
+  const readings = [projection, actual];
+  const original = structuredClone(readings);
+  assert.equal(currentSnapshot({ ...demo, readings }), actual);
+  assert.equal(currentSnapshot({ ...demo, readings: [...readings].reverse() }), actual);
+  assert.equal(currentSnapshot({ ...demo, readings: [projection] }), projection);
+  assert.deepEqual(readings, original);
+});
 test('le détail peut être ancien ou mis à jour entre deux points mensuels', () => {
   const old = demo.readings.find(r => r.positions.length)!;
   const updated = { ...structuredClone(old), id: 'updated', date: '2026-11-12', total: old.total + 50 };

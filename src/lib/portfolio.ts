@@ -28,10 +28,11 @@ export function currentReadings(readings: Reading[]) {
   const previous = sorted.filter(r => !r.projected && r.id !== actual?.id).at(-1);
   return { actual, projection, previous, change: projection && actual ? projection.total - actual.total : actual && previous ? actual.total - previous.total : null };
 }
-// Le détail le plus récent en BDD reste affiché, quelle que soit sa date
-// ou la nature du point global auquel l'import l'a associé.
+// Le dernier détail réel prime sur les projections. Les anciens imports
+// associés uniquement à une projection restent disponibles en repli.
 export function currentSnapshot(data: Portfolio) {
-  return [...data.readings].filter(r => r.positions.length).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+  const detailed = [...data.readings].filter(r => r.positions.length).sort((a, b) => a.date.localeCompare(b.date));
+  return detailed.filter(r => !r.projected).at(-1) ?? detailed.at(-1);
 }
 export function monthlyReadings(readings: Reading[]) {
   return readings.filter(r => r.date.endsWith('-01'));
