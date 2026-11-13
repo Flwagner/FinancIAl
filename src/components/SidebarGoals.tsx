@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Pencil, Save, Target, X } from 'lucide-react';
 import { currentSnapshot, euro, normalizeGoals, summarize, validatePortfolio, type Portfolio } from '@/lib/portfolio';
 import { livePositions, type MarketData } from '@/lib/market';
+import { errorMessage } from '@/lib/errors';
 
 function Goal({ label, value, target }: { label: string; value: number; target: number }) {
   return <div className="goal"><div><span>{label}</span><b>{Math.round(value / target * 100)} %</b></div><progress aria-label={label} max={target} value={Math.max(0, value)} /><div><strong>{euro(value)}</strong><small>sur {euro(target)}</small></div></div>;
@@ -26,7 +27,7 @@ export default function SidebarGoals({ data, market, onSave }: { data: Portfolio
       validatePortfolio(next);
       await onSave(next);
       dialog.current?.close();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   }
   return <>

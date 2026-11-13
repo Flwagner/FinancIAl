@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { LayoutDashboard, SlidersHorizontal, ArrowUpRight, LogOut, ShieldCheck, Sprout, X, LockKeyhole } from 'lucide-react';
 import { emptyPortfolio, loadPortfolio, savePortfolio, supabase } from '@/lib/supabase';
 import type { Portfolio } from '@/lib/portfolio';
+import { errorMessage } from '@/lib/errors';
 import MarketPanel from './MarketPanel';
 export default function App() {
   const [data, setData] = useState<Portfolio | null>(null);
@@ -21,13 +22,16 @@ export default function App() {
     const client = supabase;
     async function refresh() {
       const revision = ++request;
-      const { data: session, error: authError } = await client.auth.getSession();
-      if (!active || revision !== request) return;
-      if (authError) { setError(authError.message); setLoading(false); return; }
-      if (!session.session) { setUser(null); setData(null); setLoading(false); return; }
-      setUser(session.session.user.email || 'Compte personnel');
-      try { const portfolio = await loadPortfolio(); if (active && revision === request) setData(portfolio || structuredClone(emptyPortfolio)); }
-      catch (e) { if (active && revision === request) setError(e instanceof Error ? e.message : String(e)); }
+      try {
+        const { data: session, error: authError } = await client.auth.getSession();
+        if (!active || revision !== request) return;
+        if (authError) throw authError;
+        if (!session.session) { setUser(null); setData(null); setError(''); return; }
+        setUser(session.session.user.email || 'Compte personnel');
+        const portfolio = await loadPortfolio();
+        if (active && revision === request) { setData(portfolio || structuredClone(emptyPortfolio)); setError(''); }
+      }
+      catch (e) { if (active && revision === request) setError(errorMessage(e)); }
       finally { if (active && revision === request) setLoading(false); }
     }
     void refresh();
@@ -42,11 +46,11 @@ export default function App() {
     setLoading(true); setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setPassword(''); setLoading(false);
-    if (error) setError(error.message); else setLogin(false);
+    if (error) setError(errorMessage(error)); else setLogin(false);
   }
   async function save(next: Portfolio) { const updatedAt = await savePortfolio(next); setData({ ...structuredClone(next), updatedAt }); }
   async function signOut() {
-    if (supabase && user) { const { error } = await supabase.auth.signOut(); if (error) { setError(error.message); return; } }
+    if (supabase && user) { const { error } = await supabase.auth.signOut(); if (error) { setError(errorMessage(error)); return; } }
     setData(null); setUser(null); setTab('dashboard');
   }
   return <div className="app-shell"><aside className="sidebar"><a className="brand" href="#" aria-label="FinancIAl accueil"><div className="brand-icon"><Sprout size={22} /></div>Financ<span>IAl</span><i /></a><div className="workspace-label">ESPACE PERSONNEL</div><nav aria-label="Navigation principale"><button className={tab === 'dashboard' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('dashboard')}><LayoutDashboard size={19} />Vue d’ensemble<span>↗</span></button><button className={tab === 'editor' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('editor')}><SlidersHorizontal size={19} />Saisie des données</button></nav><div className="sidebar-goals-slot" ref={setSidebar} /><div className="sidebar-bottom"><div className="profile"><div className="avatar">F</div><div><strong>{user || 'Mon espace'}</strong><small>Portefeuille personnel</small></div></div></div></aside>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Plus, Save, Trash2, Check, Download } from 'lucide-react';
 import { categories, currentSnapshot, euro, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
 import { livePositions, symbolForCode, type MarketData } from '@/lib/market';
+import { errorMessage } from '@/lib/errors';
 const today = () => new Date().toISOString().slice(0, 10);
 const blank = (positions: Position[] = []): Reading => ({ id: crypto.randomUUID(), date: today(), projected: false, total: summarize(positions).total, positions: structuredClone(positions) });
 export default function Editor({ data, onSave, market = { returns: [], statuses: [] } }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; market?: MarketData }) {
@@ -25,7 +26,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
       validatePortfolio(next);
       await onSave(next);
       setMessage(success);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   }
   function exportBackup() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
