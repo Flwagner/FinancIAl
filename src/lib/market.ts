@@ -1,4 +1,5 @@
 import type { Position, Reading } from './portfolio';
+import type { SyncImpact } from './sync-impact';
 
 export const marketInstruments = [
   { symbol: 'WPEA.PA', code: 'EPA:WPEA', name: 'iShares MSCI World Swap PEA', currency: 'EUR' },
@@ -25,7 +26,7 @@ export type MarketReturn = {
   fetched_at: string;
 };
 export type MarketStatus = { symbol: string; last_attempt_at: string; error: string | null };
-export type MarketData = { returns: MarketReturn[]; statuses: MarketStatus[]; error?: string; loading?: boolean };
+export type MarketData = { returns: MarketReturn[]; statuses: MarketStatus[]; impact?: SyncImpact | null; error?: string; loading?: boolean };
 
 export function symbolForCode(code: string): string | undefined {
   const normalized = code.trim().toUpperCase();

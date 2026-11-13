@@ -39,7 +39,7 @@ insert into public.portfolio_owner(user_id) values ('UUID_DE_TON_COMPTE');
 5. Renseigner `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` dans `.env.local`, puis relancer le serveur. Utiliser exclusivement la clé publique/publishable (ou anon historique), **jamais service_role / secret**.
 6. Se connecter. Les politiques RLS bloquent l’accès anonyme et tout compte non autorisé, même si une inscription était réactivée. L’autorisation n’est pas un simple contrôle d’interface.
 
-Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques. V1 personnelle : éviter l’édition simultanée sur plusieurs appareils (la dernière sauvegarde gagne). Les positions et montants privés ne transitent pas par GitHub Actions : le script ne connaît que les symboles publics. Aucun stockage local persistant des finances ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
+Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques. V1 personnelle : éviter l’édition simultanée sur plusieurs appareils (la dernière sauvegarde gagne). La synchronisation de base ne connaît que les symboles publics. Si le comparatif/Push est activé, GitHub Actions reçoit aussi les **poids relatifs et taux nécessaires**, mais jamais les montants en euros, noms des placements, objectifs ou historique. Aucun stockage local persistant des finances ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
 
 ## Ancien import Google Sheet (hors interface)
 
@@ -135,6 +135,47 @@ npm run market:check
 ```
 
 Pour une écriture locale, créer un fichier privé `.env.market` contenant `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` et `MARKET_SYNC_TOKEN`, puis exécuter `node --env-file=.env.market --import tsx scripts/sync-market.ts`. Les fichiers `.env*` sont ignorés par Git. Les journaux ne contiennent que des cotations publiques et performances, pas les positions ou secrets.
+
+## Comparatif de synchronisation et notifications Web Push
+
+Après chaque job, la carte **Rendement global** peut afficher `9,52 % → 9,68 %`, puis `↗ +0,16 point` en vert (baisse en rouge, stabilité neutre), « depuis la dernière synchronisation ». C'est la variation de l'**estimation annuelle pondérée**, pas un gain encaissé ni la performance du jour. Le même détail de portefeuille est utilisé avant/après ; les taux manuels restent inclus et inchangés. Une édition du portefeuille pendant le job annule sa comparaison ; une édition ultérieure masque le résultat devenu obsolète.
+
+### Configuration (une fois)
+
+1. Exécuter `supabase/migrations/20261113085126_push_sync_impact.sql` dans le SQL Editor, après les schémas précédents. Elle ajoute `push_subscriptions`, `portfolio_sync_impact` et la RPC `push_sync`. Les clients ne peuvent gérer que leurs abonnements et lire leur comparatif ; seul le jeton du job peut écrire un comparatif. Le schéma `financial_private` doit rester **non exposé** dans les paramètres Data API.
+2. Générer un **nouveau jeton distinct** du jeton marché : `openssl rand -hex 32`. L'enregistrer comme secret GitHub **`PUSH_SYNC_TOKEN`**, puis enregistrer uniquement son empreinte dans Supabase :
+
+```sql
+insert into financial_private.push_sync_secrets(singleton, token_sha256)
+values(true, encode(sha256(convert_to('TON_NOUVEAU_JETON', 'UTF8')), 'hex'))
+on conflict(singleton) do update set token_sha256 = excluded.token_sha256;
+```
+
+À ce stade, le **comparatif dans la carte fonctionne sans Web Push**. Sans `PUSH_SYNC_TOKEN`, le job continue à synchroniser le marché sans comparatif ni notification. `market:check` ne lit ni n'écrit les données privées.
+
+3. Pour activer les notifications, générer localement une paire VAPID avec `npx web-push generate-vapid-keys`. Ne jamais committer la clé privée ni l'afficher dans les logs CI. Configurer dans GitHub → Settings → Secrets and variables → Actions :
+
+| Type | Nom | Valeur |
+|---|---|---|
+| Variable | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Clé VAPID publique (la même pour le build et l'envoi) |
+| Secret | `VAPID_PRIVATE_KEY` | Clé VAPID privée, jamais `NEXT_PUBLIC_*` |
+| Variable | `VAPID_SUBJECT` | Contact réel, par exemple `mailto:toi@ton-domaine.fr` |
+
+Pour le développement, mettre seulement la clé publique dans `.env.local`. Les secrets d'envoi peuvent être placés dans `.env.market` (ignoré par Git), jamais dans les variables publiques. Garder la paire VAPID stable ; après rotation, désactiver puis réactiver les abonnements sur chaque appareil.
+
+4. Redéployer la PWA pour intégrer la clé publique. Se connecter, puis cliquer **Activer les notifications** sur chaque appareil. Android/ordinateur : navigateur compatible ; iPhone/iPad : iOS/iPadOS 16.4+ et PWA ajoutée à l'écran d'accueil. L'autorisation n'est demandée qu'après ce clic. La désactivation ne concerne que l'appareil courant.
+5. Déclencher manuellement **Synchroniser les rendements de marché** dans Actions. Un changement du taux affiché produit une notification comme `🟢 9,52 % → 9,68 % ↗ / +0,16 point · Estimation annuelle`. Les notifications système ne permettent pas de forcer la couleur du texte : pastilles et flèches remplacent le vert/rouge de la carte. Au clic, la PWA est ouverte au bon sous-chemin GitHub Pages.
+
+### Comportement et confidentialité
+
+- Une seule notification par abonnement et par job, uniquement si le taux affiché à deux décimales change. Les exécutions sans changement actualisent le comparatif à zéro, sans alerte. Un nouvel essai du même run GitHub ne renvoie pas la notification.
+- Les erreurs de marché conservent les derniers taux valides. Un comparatif envoyé après un échec porte la mention **Synchronisation partielle**. Une erreur Push ne supprime pas les cours synchronisés mais fait échouer le job pour rester visible dans Actions.
+- Les abonnements expirés (`404/410`) sont supprimés. Les autres erreurs ne sont pas retentées automatiquement. Un résultat déjà enregistré n'est pas renvoyé lors d'un nouvel essai du même run (priorité à l'absence de doublons plutôt qu'à une livraison garantie).
+- La RPC vérifie un jeton dédié stocké uniquement sous forme d'empreinte ; pas de `service_role`. Elle ne peut pas modifier le portefeuille. Elle expose seulement les pondérations/taux nécessaires, les cours publics et, lors de l'enregistrement du résultat, les abonnements du propriétaire concerné. Ces données ne sont pas journalisées. Le script n'envoie qu'aux fournisseurs Push autorisés (Google, Mozilla, Apple, Windows).
+- La notification affiche les **taux globaux sur l'écran verrouillé**, jamais les montants ni les positions. Le contenu est chiffré par Web Push. L'abonnement reste actif après déconnexion : sur un appareil partagé, **désactiver les notifications avant de se déconnecter**.
+- Le comparatif est conservé dans Supabase, pas dans le navigateur. L'application relit le marché/comparatif toutes les cinq minutes et au retour sur la fenêtre.
+
+Tests SQL : après le bootstrap et les schémas dans un PostgreSQL 17 **jetable**, exécuter la migration Push puis `tests/sql/push-security.sql`. Ce test couvre RLS, jeton invalide, poids sans montants, version du portefeuille, doublons et nettoyage. Ne jamais exécuter le bootstrap sur Supabase réel.
 
 ## Déployer sur GitHub Pages
 

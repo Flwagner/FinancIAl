@@ -1,5 +1,6 @@
 import { marketInstruments } from '../src/lib/market';
 import { fetchYahooReturn } from './lib/yahoo';
+import { finishPushSync, pushRpc, type PushContext } from './lib/push';
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
@@ -8,6 +9,13 @@ async function main() {
   const token = process.env.MARKET_SYNC_TOKEN;
   if (!dryRun && (!url || !key || !token)) throw new Error('Configurer SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY et MARKET_SYNC_TOKEN.');
   if (url && new URL(url).protocol !== 'https:') throw new Error('SUPABASE_URL doit utiliser HTTPS.');
+  const rpc = !dryRun && process.env.PUSH_SYNC_TOKEN ? pushRpc(url!, key!, process.env.PUSH_SYNC_TOKEN) : null;
+  let before: PushContext | null = null;
+  let pushFailed = false;
+  if (rpc) {
+    try { before = await rpc<PushContext>('context'); }
+    catch { pushFailed = true; console.error('Comparatif indisponible : vérifier la migration notifications et PUSH_SYNC_TOKEN. La synchronisation continue.'); }
+  }
   async function publish(payload: object) {
     const response = await fetch(`${url}/rest/v1/rpc/sync_market_instrument`, {
       method: 'POST', signal: AbortSignal.timeout(30_000),
@@ -33,6 +41,11 @@ async function main() {
       }
     }
   }
+  if (rpc && before) {
+    try { await finishPushSync(rpc, before, failures > 0); }
+    catch { pushFailed = true; console.error('Échec du comparatif ou des notifications. Les cours synchronisés sont conservés ; vérifier la configuration Push.'); }
+  }
   if (failures) throw new Error(`${failures} instrument(s) en échec. Les dernières valeurs valides sont conservées.`);
+  if (pushFailed) throw new Error('Cours synchronisés, mais comparatif/notifications en échec.');
 }
 main().catch(error => { console.error(error instanceof Error ? error.message : 'Échec de la synchronisation.'); process.exitCode = 1; });

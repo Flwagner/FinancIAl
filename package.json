@@ -1,6 +1,6 @@
 {
   "name": "financial", "version": "0.1.0", "private": true,
   "scripts": { "dev": "next dev", "build": "next build", "typecheck": "tsc --noEmit", "test": "tsx --test tests/*.test.ts", "market:sync": "tsx scripts/sync-market.ts", "market:check": "tsx scripts/sync-market.ts --dry-run" },
-  "dependencies": { "next": "^16.0.0", "react": "^19.2.0", "react-dom": "^19.2.0", "@supabase/supabase-js": "^2.80.0", "recharts": "^3.4.0", "lucide-react": "^0.468.0", "papaparse": "^5.5.3" },
-  "devDependencies": { "typescript": "^5.9.0", "@types/node": "^22.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "@types/papaparse": "^5.3.16", "tsx": "^4.20.0" }
+  "dependencies": { "next": "^16.0.0", "react": "^19.2.0", "react-dom": "^19.2.0", "@supabase/supabase-js": "^2.80.0", "recharts": "^3.4.0", "lucide-react": "^0.468.0", "papaparse": "^5.5.3", "web-push": "3.6.7" },
+  "devDependencies": { "typescript": "^5.9.0", "@types/node": "^22.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "@types/papaparse": "^5.3.16", "tsx": "^4.20.0", "@types/web-push": "3.6.4" }
 }

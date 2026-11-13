@@ -26,3 +26,27 @@ self.addEventListener('fetch', event => {
     }
   })());
 });
+
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let payload = {};
+    try { payload = event.data?.json() || {}; } catch { /* Always show a visible notification. */ }
+    await self.registration.showNotification('FinancIAl · Rendement global', {
+      body: typeof payload.body === 'string' ? payload.body.slice(0, 500) : 'Ton rendement global a été actualisé.',
+      icon: new URL('icons/icon-192.png', self.registration.scope).href,
+      tag: 'financial-sync-impact',
+      data: { url: self.registration.scope },
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const url = self.registration.scope;
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = windows.find(client => client.url.startsWith(url));
+    if (existing) { await existing.focus(); return; }
+    await self.clients.openWindow(url);
+  })());
+});
