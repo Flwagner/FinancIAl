@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateReturn, freezeChangedReadings, groupedInvestments, livePositions, marketInstruments, symbolForCode, type MarketPrice, type MarketReturn } from '../src/lib/market';
+import { calculateReturn, freezeChangedReadings, groupedInvestments, livePositions, marketInstruments, resolveSymbol, symbolForCode, type MarketPrice, type MarketReturn } from '../src/lib/market';
 import { summarize, validatePortfolio, type Position, type Reading } from '../src/lib/portfolio';
 import { parseYahooChart, fetchYahooReturn } from '../scripts/lib/yahoo';
 
@@ -11,7 +11,7 @@ const prices: MarketPrice[] = [
   { date: '2026-11-11', close: 105, adjusted_close: 108 },
   { date: '2026-11-12', close: 200, adjusted_close: 200 },
 ];
-const performance = calculateReturn('JEQP.L', 'GBp', prices, now);
+const performance = calculateReturn('JEQP.DE', 'EUR', prices, now);
 const base: Position = { id: '1', name: 'JEQP', category: 'Actions', envelope: 'CTO', code: 'LON:JEQP', amount: 1000, rate: 2, rateSource: 'market' };
 const reading: Reading = { id: 'r', date: '2026-11-01', projected: false, total: 1000, positions: [base], categoryRates: { Actions: 99 } };
 
@@ -19,7 +19,7 @@ test('365 jours en clôture : cours du jour exclu, distributions déjà dans le 
   assert.equal(performance.start_date, '2025-11-11');
   assert.equal(performance.as_of, '2026-11-11');
   assert.ok(Math.abs(performance.rate - 20) < 1e-9);
-  assert.equal(performance.currency, 'GBp');
+  assert.equal(performance.currency, 'EUR');
 });
 test('week-end : premier jour coté suivant la date de référence', () => {
   const result = calculateReturn('TEST', 'EUR', [
@@ -54,7 +54,7 @@ test('marché prioritaire au taux de synthèse, sans mutation du relevé histori
   assert.ok(Math.abs(summarize(result.positions, result.categoryRates).annual - 200) < 1e-9);
 });
 test('échec de synchronisation : dernière bonne valeur conservée et avertissement', () => {
-  const result = livePositions(reading, { returns: [performance], statuses: [{ symbol: 'JEQP.L', last_attempt_at: now.toISOString(), error: 'HTTP 429' }] }, now);
+  const result = livePositions(reading, { returns: [performance], statuses: [{ symbol: 'JEQP.DE', last_attempt_at: now.toISOString(), error: 'HTTP 429' }] }, now);
   assert.ok(Math.abs(result.positions[0].rate - 20) < 1e-9);
   assert.match(result.warnings[0], /échec/);
   const fallback = livePositions(reading, { returns: [], statuses: [] }, now);
@@ -81,12 +81,24 @@ test('mode manuel inchangé et avertissement en cas de données anciennes', () =
   const old: MarketReturn = { ...performance, as_of: '2026-10-01' };
   assert.match(livePositions(reading, { returns: [old], statuses: [] }, now).warnings[0], /ancienne/);
 });
-test('cotation JEQP britannique distincte du JEPQ américain', () => {
-  assert.equal(symbolForCode('LON:JEQP'), 'JEQP.L');
-  assert.equal(symbolForCode(' ie000u9j8hx9 '), 'JEQP.L');
-  assert.equal(marketInstruments.find(i => 'isin' in i && i.isin === 'IE000U9J8HX9')?.currency, 'GBp');
+test('cotation JEQP en EUR à Xetra, distincte du JEPQ américain', () => {
+  // La ligne JEQP.L (Londres, GBp) n'est plus suivie : cours ajusté Yahoo sans
+  // les distributions. Les anciens relevés restent lisibles via resolveSymbol.
+  assert.equal(symbolForCode('LON:JEQP'), undefined);
+  assert.equal(resolveSymbol('LON:JEQP'), 'JEQP.DE');
+  assert.equal(resolveSymbol('JEQP.L'), 'JEQP.DE');
+  assert.equal(resolveSymbol(' ie000u9j8hx9 '), 'JEQP.DE');
+  assert.equal(marketInstruments.find(i => 'isin' in i && i.isin === 'IE000U9J8HX9')?.currency, 'EUR');
   assert.equal(symbolForCode(' wpea.pa '), 'WPEA.PA');
   assert.equal(symbolForCode('JEPQ'), undefined);
+});
+test('relevé JEQP encore codé LON:JEQP : taux EUR appliqué, ancien cours GBp ignoré', () => {
+  const live = livePositions(reading, { returns: [performance], statuses: [] }, now);
+  assert.ok(Math.abs(live.positions[0].rate - 20) < 1e-9);
+  assert.equal(live.positions[0].rateAsOf, performance.as_of);
+  const pence = livePositions(reading, { returns: [{ ...performance, symbol: 'JEQP.L', currency: 'GBp', rate: -3.16 }], statuses: [] }, now);
+  assert.equal(pence.positions[0].rate, base.rate);
+  assert.match(pence.warnings.join(' '), /indisponible/);
 });
 test('ISIN des huit placements BoursoBank : identité préservée, références EUR distinctes', () => {
   const expected = [
@@ -141,17 +153,20 @@ test('obligations automatiques : AGGH en EUR remplace le taux manuel et le taux 
   assert.equal(result.categoryRates.Obligations, undefined);
   assert.deepEqual(result.warnings, []);
 });
-const payload = { chart: { error: null, result: [{ meta: { symbol: 'JEQP.L', currency: 'GBp', exchangeTimezoneName: 'Europe/London' }, timestamp: [1762866000], indicators: { quote: [{ close: [100] }], adjclose: [{ adjclose: [95] }] } }] } };
+const payload = { chart: { error: null, result: [{ meta: { symbol: 'JEQP.DE', currency: 'EUR', exchangeTimezoneName: 'Europe/Berlin' }, timestamp: [1762866000], indicators: { quote: [{ close: [100] }], adjclose: [{ adjclose: [95] }] } }] } };
 test('adaptateur Yahoo : vérification de la cotation, devise et prix ajustés', () => {
-  assert.equal(parseYahooChart(payload, 'JEQP.L', 'GBp')[0].adjusted_close, 95);
+  assert.equal(parseYahooChart(payload, 'JEQP.DE', 'EUR')[0].adjusted_close, 95);
   assert.throws(() => parseYahooChart(payload, 'JEPQ', 'USD'), /inattendus/);
+  // L'ancienne cotation en pence sterling est refusée : elle ne peut pas être
+  // réécrite comme un cours EUR.
+  assert.throws(() => parseYahooChart(payload, 'JEQP.DE', 'GBp'), /inattendus/);
   const missing = structuredClone(payload);
   missing.chart.result[0].indicators.adjclose = [];
-  assert.throws(() => parseYahooChart(missing, 'JEQP.L', 'GBp'), /absent/);
+  assert.throws(() => parseYahooChart(missing, 'JEQP.DE', 'EUR'), /absent/);
 });
 test('adaptateur Yahoo : HTTP 429 remonte en erreur, sans contournement', async () => {
   const request = (async () => new Response('', { status: 429 })) as typeof fetch;
-  await assert.rejects(fetchYahooReturn('JEQP.L', 'GBp', now, request), /HTTP 429/);
+  await assert.rejects(fetchYahooReturn('JEQP.DE', 'EUR', now, request), /HTTP 429/);
 });
 test('validation : seuls les relevés modifiés figent la dernière valeur et sa date', () => {
   const market = { returns: [performance], statuses: [] };

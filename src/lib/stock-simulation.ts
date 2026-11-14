@@ -1,4 +1,4 @@
-import { calculateReturn, livePositions, marketInstruments, symbolForCode, type MarketData, type MarketPrice } from './market';
+import { calculateReturn, livePositions, marketInstruments, resolveSymbol, type MarketData, type MarketPrice } from './market';
 import { summarize, type Position, type Reading } from './portfolio';
 
 export type History = Record<string, MarketPrice[]>;
@@ -15,7 +15,7 @@ export function annualStockPerformance(reading: Reading | undefined, market: Mar
   return { ...summarize(positions), positions, warnings: live.warnings };
 }
 export function instrumentFor(p: Position) {
-  return marketInstruments.find(i => i.symbol === symbolForCode(p.code));
+  return marketInstruments.find(i => i.symbol === resolveSymbol(p.code));
 }
 export function referenceFor(p: Position) {
   const i = instrumentFor(p);

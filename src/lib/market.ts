@@ -7,8 +7,10 @@ export const marketInstruments = [
   { symbol: 'PCEU.PA', code: 'EPA:PCEU', isin: 'FR0013412038', name: 'Amundi PEA MSCI Europe', currency: 'EUR' },
   { symbol: 'PAEEM.PA', code: 'EPA:PAEEM', isin: 'FR0013412020', name: 'Amundi PEA Émergent', currency: 'EUR' },
   { symbol: 'PAASI.PA', code: 'EPA:PAASI', isin: 'FR0013412012', name: 'Amundi PEA Asie Émergente', currency: 'EUR' },
-  // JEQP.L est coté en pence sterling, pas en USD et pas l'ETF américain JEPQ.
-  { symbol: 'JEQP.L', code: 'LON:JEQP', isin: 'IE000U9J8HX9', name: 'JPM Nasdaq Equity Premium Income UCITS Dist', currency: 'GBp' },
+  // Même part (ISIN identique) cotée en EUR à Xetra, devise réelle des ordres.
+  // La ligne JEQP.L de Londres n'est plus suivie : son cours ajusté Yahoo ignore
+  // les distributions (~11 % par an), ce qui affichait un rendement faux.
+  { symbol: 'JEQP.DE', code: 'XETRA:JEQP', isin: 'IE000U9J8HX9', name: 'JPM Nasdaq Equity Premium Income UCITS Dist', currency: 'EUR' },
   // Même part EUR hedged capitalisante, cotation de Milan (pas l'ETF américain AGGH).
   { symbol: 'AGGH.MI', code: 'BIT:AGGH', isin: 'IE00BDBRDM35', name: 'iShares Core Global Aggregate Bond EUR Hedged Acc', currency: 'EUR' },
   // Identité du placement détenu distincte de la référence de calcul autorisée.
@@ -44,10 +46,20 @@ function correctedLegacySymbol(code: string): string | undefined {
   const normalized = code.trim().toUpperCase();
   if (normalized === 'NYSEARCA:GLD' || normalized === 'GLD') return 'FRSGE001BQW9';
   if (normalized === 'BTCEUR' || normalized === 'BTC-EUR') return 'BITC.PA';
+  // Ancienne ligne de Londres (GBp) : remplacée par la même part cotée en EUR.
+  if (normalized === 'LON:JEQP' || normalized === 'JEQP.L') return 'JEQP.DE';
+  return undefined;
+}
+
+// Résolution unique utilisée par le dashboard, la courbe et la validation :
+// les anciens codes restent lisibles sans jamais réattribuer un cours d'une
+// autre devise à la ligne détenue.
+export function resolveSymbol(code: string): string | undefined {
+  return correctedLegacySymbol(code) ?? symbolForCode(code);
 }
 
 export function isKnownMarketCode(code: string): boolean {
-  return !!(symbolForCode(code) || correctedLegacySymbol(code));
+  return !!resolveSymbol(code);
 }
 
 const dayMs = 86_400_000;
@@ -78,7 +90,7 @@ export function livePositions(reading: Reading | undefined, market: MarketData, 
   const referenceNotes: string[] = [];
   const positions = (reading?.positions || []).map(p => {
     if (p.rateSource !== 'market') return p;
-    const symbol = correctedLegacySymbol(p.code) || symbolForCode(p.code);
+    const symbol = resolveSymbol(p.code);
     const instrument = marketInstruments.find(i => i.symbol === symbol);
     const referenceSymbol = instrument && 'referenceSymbol' in instrument ? instrument.referenceSymbol : symbol;
     if (instrument && 'referenceNote' in instrument) referenceNotes.push(`${p.name} : ${instrument.referenceNote} Référence Yahoo : ${referenceSymbol}.`);

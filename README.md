@@ -67,7 +67,7 @@ Sur **1 an**, le taux affiché reprend les taux et le périmètre du dashboard v
 
 Sur les autres périodes, les dates communes sont utilisées sans interpolation. Les lignes sans cotation, à montant nul, avec clôture ancienne de plus de sept jours, historique insuffisant ou interruption de plus de sept jours sont exclues et les poids restants renormalisés. Ces performances partielles ne doivent pas être comparées au taux annuel de toute la poche.
 
-Les cours sont lus en pagination depuis `market_prices`, uniquement après connexion et avec les droits existants ; aucune migration, écriture des relevés ou requête Yahoo depuis le navigateur n’est ajoutée. Les historiques sont relus automatiquement toutes les cinq minutes et au retour sur la fenêtre, sans bouton d’actualisation manuel. La synthèse affiche uniquement le montant détenu et le nombre de placements. Les rendements restent en devises de cotation, sans conversion EUR. Les approximations sont signalées, ainsi que l’incertitude des cours ajustés de JEQP.L. Aucun dividende n’est ajouté aux cours ajustés.
+Les cours sont lus en pagination depuis `market_prices`, uniquement après connexion et avec les droits existants ; aucune migration, écriture des relevés ou requête Yahoo depuis le navigateur n’est ajoutée. Les historiques sont relus automatiquement toutes les cinq minutes et au retour sur la fenêtre, sans bouton d’actualisation manuel. La synthèse affiche uniquement le montant détenu et le nombre de placements. Les rendements restent en devises de cotation, sans conversion EUR. Les approximations sont signalées. JEQP suit la cotation EUR de Xetra (même ISIN), la ligne GBp de Londres ignorant les distributions dans son cours ajusté Yahoo. Aucun dividende n’est ajouté aux cours ajustés.
 
 ### Estimations du dashboard
 
@@ -94,12 +94,12 @@ Les références sont rattachées aux ISIN BoursoBank (vérification du 13 novem
 | FR0013412038 | Amundi PEA MSCI Europe | PCEU.PA · EUR |
 | FR0013412020 | Amundi PEA Émergent | PAEEM.PA · EUR |
 | FR0013412012 | Amundi PEA Asie Émergente | PAASI.PA · EUR |
-| IE000U9J8HX9 | JPM Nasdaq Equity Premium Income UCITS USD Dist | JEQP.L · GBp, Londres |
+| IE000U9J8HX9 | JPM Nasdaq Equity Premium Income UCITS USD Dist | JEQP.DE · EUR, Xetra |
 | IE00BDBRDM35 | iShares Core Global Aggregate Bond EUR Hedged Acc | AGGH.MI · EUR, même part cotée à Milan |
 | GB00BLD4ZL17 | CoinShares Bitcoin ETP | **Approximation : BTC-EUR**, bitcoin spot en euros |
 | FRSGE001BQW9 | GOLD/SGE OPEN, Société Générale | **Approximation : SGLD.MI**, Invesco Physical Gold ETC coté en euros |
 
-L'ISIN JEQP **IE000U9J8HX9** est confirmé par [JPMorgan](https://am.jpmorgan.com/ch/en/asset-management/per/products/jpm-nasdaq-equity-premium-income-active-ucits-etf-usd-dist-ie000u9j8hx9). La référence suivie reste JEQP.L (GBp, Londres). Le même ISIN est aussi coté en EUR sous JEQP.DE (Xetra) et JEPQ.MI (Milan), mais aucune bascule de place ou de devise n'est effectuée ici. **L'ajustement Yahoo de JEQP.L semble incohérent avec les distributions ; son taux n'est pas validé comme rendement total.** Confirmer l'ISIN ne valide pas les cours ajustés. Ne pas ajouter mécaniquement les dividendes au cours ajusté ni corriger leur unité sans vérification émetteur.
+L'ISIN JEQP **IE000U9J8HX9** est confirmé par [JPMorgan](https://am.jpmorgan.com/ch/en/asset-management/per/products/jpm-nasdaq-equity-premium-income-active-ucits-etf-usd-dist-ie000u9j8hx9). La référence suivie est **JEQP.DE (Xetra, EUR)**, devise des ordres exécutés chez Trade Republic sur LS Exchange : même part, mêmes cours en euros à l'écart de spread près. Le même ISIN est aussi coté à Londres en GBp (`JEQP.L`) et en USD (`JEPQ.L`), à Milan (`JEPQ.MI`) et sur SIX (`JEPQ.S`). **La ligne JEQP.L en pence sterling n'est plus utilisée : son cours ajusté Yahoo ignore les distributions (~11 % par an), ce qui affichait un rendement annuel faux.** Au 13 novembre 2026, la fenêtre 365 jours donnait −2,96 % sur JEQP.L contre +13,35 % sur JEQP.DE, en ligne avec le +14,03 % EUR publié par justETF : la cotation EUR est la seule cohérente. Les cours GBp déjà téléchargés restent en base pour audit, mais l'instrument est inactif et n'est plus ni lu ni synchronisé. Migration : `supabase/migrations/20261114094306_jeqp_xetra_eur.sql`, suivie d'une synchronisation de JEQP.DE (13,35 % au 13 novembre 2026). Sans synchronisation après la migration, le taux du relevé est conservé avec un avertissement.
 
 Au 13 novembre 2026, Yahoo ne renvoie qu'une séance pour BITC.PA et BITC-XAMS.AS, moins d'un an pour BITC.AS ; les autres cotations EUR testées ne permettent pas non plus le calcul annuel. **BTC-EUR est donc la référence de calcul explicitement choisie**, hors frais, suivi et horaires de CoinShares. GOLD/SGE n'est pas couvert : **SGLD.MI (ISIN IE00B579F325)** fournit deux ans de clôtures d'un ETC adossé à l'or physique, coté en euros. Il ne reproduit pas les frais et mécanismes du produit Société Générale. Aucun cours USD n'est utilisé comme s'il s'agissait d'un rendement EUR.
 
@@ -112,7 +112,7 @@ La synchronisation récupère deux ans de clôtures et utilise `adjusted_close`,
 - Fin : dernière clôture d'un jour strictement antérieur au jour UTC courant (exclusion des bougies intraday).
 - Début : premier jour coté à partir de **la date de fin moins 365 jours**, au maximum 7 jours après la cible. Pas d'annualisation artificielle si l'historique est insuffisant.
 - Un cours de clôture vieux de plus de 7 jours bloque le calcul.
-- Devise vérifiée pour chaque instrument. JEQP.L est coté en **GBp** ; ne pas le remplacer par le JEPQ américain. Les pourcentages sont en devise de cotation : **pas de conversion de performance en EUR**, et pas d'effet de change ajouté au portefeuille. Les montants restent ceux saisis en euros.
+- Devise vérifiée pour chaque instrument. JEQP est suivi en **EUR** via Xetra ; ne pas le remplacer par le JEPQ américain ni revenir à la ligne GBp de Londres, dont le cours ajusté est inexploitable. Les pourcentages sont en devise de cotation : **pas de conversion de performance en EUR**, et pas d'effet de change ajouté au portefeuille. Les montants restent ceux saisis en euros.
 
 ### Tables et sécurité
 
@@ -224,4 +224,4 @@ npm run build
 
 Le schéma SQL et les politiques RLS doivent également être testés sur ton projet réel : connecté comme propriétaire, créer/lire/modifier un relevé ; déconnecté ou avec un autre compte, aucune lecture/écriture ne doit être autorisée. L’import initial et le déploiement réel nécessitent ta configuration Supabase/GitHub et ne sont pas exécutés automatiquement depuis ce dépôt.
 
-Tests SQL reproductibles dans un PostgreSQL 17 jetable uniquement : exécuter successivement `tests/sql/bootstrap.sql`, `supabase/schema.sql`, `supabase/migrations/001_market.sql`, puis `tests/sql/market-security.sql`. Le bootstrap simule les rôles Supabase ; **ne jamais l'exécuter sur le projet réel**. Ces tests couvrent le jeton invalide, les droits limités, le propriétaire/non-propriétaire, le recalcul serveur et la conservation du dernier résultat après échec.
+Tests SQL reproductibles dans un PostgreSQL 17 jetable uniquement : exécuter successivement `tests/sql/bootstrap.sql`, `supabase/schema.sql`, `supabase/migrations/001_market.sql`, puis `tests/sql/market-security.sql`. Après la migration `20261114094306_jeqp_xetra_eur.sql`, exécuter aussi `tests/sql/jeqp-xetra.sql` (bascule JEQP.L → JEQP.DE, cours GBp conservés, ISIN unique, idempotence). Le bootstrap simule les rôles Supabase ; **ne jamais l'exécuter sur le projet réel**. Ces tests couvrent le jeton invalide, les droits limités, le propriétaire/non-propriétaire, le recalcul serveur et la conservation du dernier résultat après échec.
