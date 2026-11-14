@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregate, currentReadings, currentSnapshot, defaultGoals, evolutionReadings, monthlyReadings, normalizeGoals, summarize, validatePortfolio } from '../src/lib/portfolio';
+import { aggregate, currentReadings, currentSnapshot, defaultGoals, displayedRate, euro, evolutionReadings, monthlyReadings, normalizeGoals, percent, summarize, validatePortfolio } from '../src/lib/portfolio';
 import { demo } from './fixtures/portfolio';
 test('progression : comparaison au dernier point mensuel réel validé de la courbe', () => {
   const readings = [
@@ -49,6 +49,17 @@ test('gains pondérés, négatifs et division mensuelle', () => {
   assert.equal(summarize([{ ...positions[0], amount: 1000, rate: -5 }]).annual, -50);
   assert.equal(summarize([{ ...positions[0], amount: 1000, rate: -5 }], { SCPI: 10 }).annual, 100);
   assert.equal(aggregate(positions, 'category').reduce((s, p) => s + p.value, 0), stats.total);
+});
+test('le gain annuel se dérive du rendement affiché, pas de sa valeur complète', () => {
+  const total = 248504.3;
+  const exact = 9.543975497454598;
+  const rate = displayedRate(exact);
+  assert.equal(rate, 9.54);
+  assert.equal(percent(rate), percent(exact));
+  assert.equal(euro(total * rate / 100), euro(23707.31));
+  assert.equal(Math.round(total * rate / 100), 23707);
+  assert.equal(displayedRate(-4.567), -4.57);
+  assert.equal(displayedRate(0), 0);
 });
 test('la projection ne remplace pas le dernier relevé réel', () => {
   const state = currentReadings(demo.readings);

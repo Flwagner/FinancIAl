@@ -71,10 +71,10 @@ Les cours sont lus en pagination depuis `market_prices`, uniquement après conne
 
 ### Estimations du dashboard
 
-- Gain annuel estimé = somme des montants × taux annuel / 100. Mensuel = annuel / 12.
+- Gain annuel estimé = capital détaillé × rendement global affiché / 100, avec le rendement arrondi à deux décimales : `9,54 % × capital` correspond donc au gain affiché. Mensuel = annuel / 12. L’écart avec la somme exacte des taux reste de quelques euros, masqué par l’arrondi à l’euro des tuiles.
 - Les taux Actions et SCPI sont calculés depuis les placements détaillés. **JEQP est inclus** dans la moyenne pondérée Actions. Les taux de synthèse sont ignorés dès qu'une catégorie contient un placement en mode marché. Les autres taux de synthèse restent modifiables dans chaque relevé.
 - ETF Monde : moyenne pondérée des performances WPEA/DCAM par leurs montants, pas moyenne simple.
-- Rendement global = gain annuel estimé / capital détaillé.
+- Rendement global = taux pondéré des montants × taux annuels / capital détaillé, affiché avec deux décimales.
 - Total en tête = somme des derniers montants détaillés disponibles, indépendamment des totaux mensuels ; répartitions et estimations utilisent ces mêmes placements et les derniers taux de marché disponibles.
 - Progression en cours = total actuel − dernier point mensuel réel validé de la courbe, sans utiliser les projections. Les apports/retraits ne sont pas isolés : ce n’est pas une performance financière nette des flux.
 - Une projection ne devient jamais réelle automatiquement : modifier sa nature et valider le relevé à la clôture.

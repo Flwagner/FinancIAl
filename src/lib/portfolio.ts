@@ -11,6 +11,9 @@ export const categories = ['SCPI', 'Actions', 'Bricks', 'Livret A', 'Assurance v
 export const colors = ['#a3e635', '#818cf8', '#22d3ee', '#fbbf24', '#fb923c', '#f472b6', '#e2c56e', '#2dd4bf', '#c084fc'];
 export const euro = (value: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value);
 export const percent = (value: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value) + ' %';
+// Taux tel qu'affiché (deux décimales). Le gain annuel en est dérivé pour que
+// « rendement × capital » corresponde à la tuile « Gain annuel estimé ».
+export const displayedRate = (value: number) => Number(new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, useGrouping: false }).format(value));
 export function summarize(positions: Position[], categoryRates: Record<string, number> = {}) {
   const total = positions.reduce((sum, p) => sum + p.amount, 0);
   const annual = positions.reduce((sum, p) => sum + p.amount * (categoryRates[p.category] ?? p.rate) / 100, 0);
