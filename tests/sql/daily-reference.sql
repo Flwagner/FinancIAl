@@ -69,6 +69,24 @@ begin
   p := p || jsonb_build_object('run_id', 'after-gap', 'synced_at', v_time + interval '9 seconds', 'after_rate', 9.8);
   r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
   if (r->'impact'->>'before_rate')::numeric <> 9.7 or (r->'impact'->>'reference_changed')::boolean then raise exception 'TEST FAILED: baseline not rolled after skipped day'; end if;
+  -- Une projection datée plus tard ne remplace jamais le dernier relevé réel,
+  -- ni pour les pondérations du job, ni pour l'empreinte des placements.
+  update public.portfolios p set data = jsonb_set(p.data, '{readings}',
+      (p.data->'readings') || jsonb_build_array(jsonb_build_object(
+        'id', 'projection', 'date', '2099-01-01', 'projected', true, 'total', 3000,
+        'positions', jsonb_build_array(jsonb_build_object('id', 'p', 'name', '', 'envelope', '',
+          'category', 'Actions', 'code', '', 'amount', 3000, 'rate', 30, 'rateSource', 'manual'))))),
+    updated_at = now()
+    where user_id = (p->>'user_id')::uuid;
+  p := p || jsonb_build_object('run_id', 'projection', 'synced_at', v_time + interval '10 seconds', 'after_rate', 9.9, 'portfolio_updated_at', now());
+  r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
+  if (r->'impact'->>'reference_changed')::boolean then raise exception 'TEST FAILED: projection mistaken for holdings change'; end if;
+  r := public.push_sync('daily-test-only-token-at-least-32-characters', 'context');
+  if jsonb_array_length(r->'portfolios') <> 1
+    or (r->'portfolios'->0->'reading'->'positions'->0->>'rate')::numeric <> 9.52
+    or (r->'portfolios'->0->'reading'->'positions'->0->>'amount')::numeric <> 1 then
+    raise exception 'TEST FAILED: projected reading used as comparison base';
+  end if;
   if (timestamptz '2026-07-12 22:00:00+00' at time zone 'Europe/Paris')::date <> date '2026-07-13'
     or (timestamptz '2026-11-12 23:00:00+00' at time zone 'Europe/Paris')::date <> date '2026-11-13' then raise exception 'TEST FAILED: Paris midnight'; end if;
 end $$;
