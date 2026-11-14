@@ -19,7 +19,7 @@ test('écran allégé : retrait du bouton, du bloc couverture et des explication
   assert.match(html, /CGI · Simulation à 30 % par an — aucun historique disponible/);
   assert.match(html, /<b>CGI<\/b><span class="stock-tile-identifiers">Sans cotation · Simulation · 30 % \/ an<\/span>/);
   assert.doesNotMatch(html, /<strong>CGI · Simulation/);
-  assert.doesNotMatch(html, /Les devises étrangères ne sont pas converties|L’ajustement des distributions de JEQP.L|CGI dans le PEE, sans historique|Les autres fonds non cotés|Les erreurs de synchronisation et approximations/);
+  assert.doesNotMatch(html, /Les devises étrangères ne sont pas converties|CGI dans le PEE, sans historique|Les autres fonds non cotés|Les erreurs de synchronisation et approximations/);
   assert.match(html, /Les performances de marché sont calculées à partir des cours ajustés Yahoo, sans ajout de dividendes\./);
   assert.match(html, /Montant détenu/);
   assert.match(html, /Placements/);

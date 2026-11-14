@@ -12,7 +12,7 @@ const prices: MarketPrice[] = [
   { date: '2026-11-12', close: 200, adjusted_close: 200 },
 ];
 const performance = calculateReturn('JEQP.DE', 'EUR', prices, now);
-const base: Position = { id: '1', name: 'JEQP', category: 'Actions', envelope: 'CTO', code: 'LON:JEQP', amount: 1000, rate: 2, rateSource: 'market' };
+const base: Position = { id: '1', name: 'JEQP', category: 'Actions', envelope: 'CTO', code: 'IE000U9J8HX9', amount: 1000, rate: 2, rateSource: 'market' };
 const reading: Reading = { id: 'r', date: '2026-11-01', projected: false, total: 1000, positions: [base], categoryRates: { Actions: 99 } };
 
 test('365 jours en clôture : cours du jour exclu, distributions déjà dans le cours ajusté', () => {
@@ -82,23 +82,19 @@ test('mode manuel inchangé et avertissement en cas de données anciennes', () =
   assert.match(livePositions(reading, { returns: [old], statuses: [] }, now).warnings[0], /ancienne/);
 });
 test('cotation JEQP en EUR à Xetra, distincte du JEPQ américain', () => {
-  // La ligne JEQP.L (Londres, GBp) n'est plus suivie : cours ajusté Yahoo sans
-  // les distributions. Les anciens relevés restent lisibles via resolveSymbol.
-  assert.equal(symbolForCode('LON:JEQP'), undefined);
-  assert.equal(resolveSymbol('LON:JEQP'), 'JEQP.DE');
-  assert.equal(resolveSymbol('JEQP.L'), 'JEQP.DE');
+  assert.equal(symbolForCode('XETRA:JEQP'), 'JEQP.DE');
   assert.equal(resolveSymbol(' ie000u9j8hx9 '), 'JEQP.DE');
   assert.equal(marketInstruments.find(i => 'isin' in i && i.isin === 'IE000U9J8HX9')?.currency, 'EUR');
   assert.equal(symbolForCode(' wpea.pa '), 'WPEA.PA');
   assert.equal(symbolForCode('JEPQ'), undefined);
 });
-test('relevé JEQP encore codé LON:JEQP : taux EUR appliqué, ancien cours GBp ignoré', () => {
+test('relevé JEQP codé par ISIN : taux EUR appliqué, devise étrangère ignorée', () => {
   const live = livePositions(reading, { returns: [performance], statuses: [] }, now);
   assert.ok(Math.abs(live.positions[0].rate - 20) < 1e-9);
   assert.equal(live.positions[0].rateAsOf, performance.as_of);
-  const pence = livePositions(reading, { returns: [{ ...performance, symbol: 'JEQP.L', currency: 'GBp', rate: -3.16 }], statuses: [] }, now);
-  assert.equal(pence.positions[0].rate, base.rate);
-  assert.match(pence.warnings.join(' '), /indisponible/);
+  const foreign = livePositions(reading, { returns: [{ ...performance, currency: 'USD', rate: 9.04 }], statuses: [] }, now);
+  assert.equal(foreign.positions[0].rate, base.rate);
+  assert.match(foreign.warnings.join(' '), /indisponible/);
 });
 test('ISIN des huit placements BoursoBank : identité préservée, références EUR distinctes', () => {
   const expected = [
@@ -157,9 +153,9 @@ const payload = { chart: { error: null, result: [{ meta: { symbol: 'JEQP.DE', cu
 test('adaptateur Yahoo : vérification de la cotation, devise et prix ajustés', () => {
   assert.equal(parseYahooChart(payload, 'JEQP.DE', 'EUR')[0].adjusted_close, 95);
   assert.throws(() => parseYahooChart(payload, 'JEPQ', 'USD'), /inattendus/);
-  // L'ancienne cotation en pence sterling est refusée : elle ne peut pas être
-  // réécrite comme un cours EUR.
-  assert.throws(() => parseYahooChart(payload, 'JEQP.DE', 'GBp'), /inattendus/);
+  // Une devise différente est refusée : elle ne peut pas être réécrite comme un
+  // cours EUR.
+  assert.throws(() => parseYahooChart(payload, 'JEQP.DE', 'USD'), /inattendus/);
   const missing = structuredClone(payload);
   missing.chart.result[0].indicators.adjclose = [];
   assert.throws(() => parseYahooChart(missing, 'JEQP.DE', 'EUR'), /absent/);

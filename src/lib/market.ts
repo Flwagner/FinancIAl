@@ -7,9 +7,7 @@ export const marketInstruments = [
   { symbol: 'PCEU.PA', code: 'EPA:PCEU', isin: 'FR0013412038', name: 'Amundi PEA MSCI Europe', currency: 'EUR' },
   { symbol: 'PAEEM.PA', code: 'EPA:PAEEM', isin: 'FR0013412020', name: 'Amundi PEA Émergent', currency: 'EUR' },
   { symbol: 'PAASI.PA', code: 'EPA:PAASI', isin: 'FR0013412012', name: 'Amundi PEA Asie Émergente', currency: 'EUR' },
-  // Même part (ISIN identique) cotée en EUR à Xetra, devise réelle des ordres.
-  // La ligne JEQP.L de Londres n'est plus suivie : son cours ajusté Yahoo ignore
-  // les distributions (~11 % par an), ce qui affichait un rendement faux.
+  // Cotation EUR de Xetra : devise réelle des ordres, cours ajustés fiables.
   { symbol: 'JEQP.DE', code: 'XETRA:JEQP', isin: 'IE000U9J8HX9', name: 'JPM Nasdaq Equity Premium Income UCITS Dist', currency: 'EUR' },
   // Même part EUR hedged capitalisante, cotation de Milan (pas l'ETF américain AGGH).
   { symbol: 'AGGH.MI', code: 'BIT:AGGH', isin: 'IE00BDBRDM35', name: 'iShares Core Global Aggregate Bond EUR Hedged Acc', currency: 'EUR' },
@@ -46,8 +44,6 @@ function correctedLegacySymbol(code: string): string | undefined {
   const normalized = code.trim().toUpperCase();
   if (normalized === 'NYSEARCA:GLD' || normalized === 'GLD') return 'FRSGE001BQW9';
   if (normalized === 'BTCEUR' || normalized === 'BTC-EUR') return 'BITC.PA';
-  // Ancienne ligne de Londres (GBp) : remplacée par la même part cotée en EUR.
-  if (normalized === 'LON:JEQP' || normalized === 'JEQP.L') return 'JEQP.DE';
   return undefined;
 }
 

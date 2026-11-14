@@ -1,4 +1,7 @@
 -- Test autonome, uniquement dans une base PostgreSQL jetable vide.
+-- Couvre la bascule JEQP vers la cotation EUR puis la suppression complète de
+-- l'ancienne cotation en pence : cours, rendement, statut, instrument et codes
+-- de relevés. Ce test crée volontairement l'état à supprimer.
 \set ON_ERROR_STOP on
 create role anon;
 create role authenticated;
@@ -9,14 +12,22 @@ create function auth.uid() returns uuid language sql stable as $$ select null::u
 \ir ../../supabase/migrations/001_market.sql
 \ir ../../supabase/migrations/20261113103811_correct_instrument_references.sql
 
--- Historique de l'ancienne ligne GBp : il doit rester intact après la bascule.
+-- État initial : ancienne cotation en pence, son historique, et un relevé qui la
+-- référence encore (taux marché et taux manuel sur le même ISIN).
 insert into public.market_prices values
   ('JEQP.L', '2025-11-12', 2020.5, 2018.2467),
   ('JEQP.L', '2026-11-12', 1954.4, 1954.4);
 insert into public.market_returns values
   ('JEQP.L', '2026-11-12', '2025-11-12', 2018.2467, 1954.4, -3.16, 'GBp', 'adjusted_close_365d', now());
-create temporary table before_prices as select * from public.market_prices;
-create temporary table before_returns as select * from public.market_returns;
+insert into public.market_sync_status values ('JEQP.L', now(), null);
+insert into auth.users values ('00000000-0000-0000-0000-000000000012');
+insert into public.portfolios(user_id, data) values
+('00000000-0000-0000-0000-000000000012', '{"goals":{"capital":100},"readings":[
+  {"id":"latest","date":"2026-11-13","projected":false,"positions":[
+    {"name":"JEQP","code":"LON:JEQP","amount":50,"rate":-3.16,"rateAsOf":"2026-11-12","rateSource":"market"},
+    {"name":"JEQP manuel","code":"IE000U9J8HX9","amount":10,"rate":7,"rateSource":"manual"}]},
+  {"id":"vide","date":"2026-10-01","projected":false,"positions":[]}
+]}');
 
 \ir ../../supabase/migrations/20261114094306_jeqp_xetra_eur.sql
 
@@ -29,30 +40,60 @@ begin
       and reference_symbol is null and reference_note is null
   ) then raise exception 'Nouvelle cotation EUR absente ou incomplète'; end if;
   if not exists (select 1 from public.market_instruments where symbol = 'JEQP.L' and not active and isin is null) then
-    raise exception 'Ancienne cotation GBp encore active ou ISIN non libéré';
+    raise exception 'Ancienne cotation encore active ou ISIN non libéré';
   end if;
   if (select count(*) from public.market_instruments where isin = 'IE000U9J8HX9') <> 1 then
     raise exception 'ISIN partagé par plusieurs lignes';
   end if;
-  if exists (select * from public.market_prices except select * from before_prices)
-    or exists (select * from before_prices except select * from public.market_prices) then
-    raise exception 'Cours GBp modifiés ou réattribués';
+  if (select count(*) from public.market_prices where symbol = 'JEQP.L') <> 2 then
+    raise exception 'Cours de l''ancienne cotation perdus avant la suppression';
   end if;
-  if exists (select * from public.market_returns except select * from before_returns)
-    or exists (select * from before_returns except select * from public.market_returns) then
-    raise exception 'Rendement GBp modifié ou réattribué';
-  end if;
-  -- L'ISIN ne peut pas être réutilisé par une troisième ligne.
-  begin
-    insert into public.market_instruments(symbol, google_code, isin, name, currency)
-      values ('BAD.DE', 'XETRA:BAD', 'IE000U9J8HX9', 'BAD', 'EUR');
-    raise exception 'ISIN dupliqué accepté';
-  exception when unique_violation then null;
-  end;
 end $$;
 
--- Deuxième exécution : la migration reste sans effet supplémentaire.
-\ir ../../supabase/migrations/20261114094306_jeqp_xetra_eur.sql
+-- Rendement EUR disponible au moment du nettoyage : sert de taux de secours.
+insert into public.market_returns values
+  ('JEQP.DE', '2026-11-13', '2025-11-13', 100, 113.3523912903285, 13.3523912903285, 'EUR', 'adjusted_close_365d', now());
+
+\ir ../../supabase/migrations/20261114095504_remove_jeqp_london.sql
+
+do $$
+declare
+  v_data jsonb;
+begin
+  if exists (select 1 from public.market_instruments where symbol = 'JEQP.L')
+    or exists (select 1 from public.market_prices where symbol = 'JEQP.L')
+    or exists (select 1 from public.market_returns where symbol = 'JEQP.L')
+    or exists (select 1 from public.market_sync_status where symbol = 'JEQP.L') then
+    raise exception 'Traces de l''ancienne cotation encore présentes';
+  end if;
+  if not exists (select 1 from public.market_instruments where symbol = 'JEQP.DE' and active and isin = 'IE000U9J8HX9') then
+    raise exception 'Cotation EUR supprimée par erreur';
+  end if;
+
+  select data into v_data from public.portfolios
+    where user_id = '00000000-0000-0000-0000-000000000012';
+
+  if v_data::text like '%LON:JEQP%' or v_data::text like '%"JEQP.L"%' then
+    raise exception 'Ancien code conservé dans les relevés';
+  end if;
+  if v_data #>> '{readings,0,positions,0,code}' <> 'XETRA:JEQP' then
+    raise exception 'Code du relevé non réécrit';
+  end if;
+  if (v_data #>> '{readings,0,positions,0,rate}')::numeric <> 13.3523912903285
+    or v_data #>> '{readings,0,positions,0,rateAsOf}' <> '2026-11-13' then
+    raise exception 'Taux de secours non aligné sur la cotation EUR';
+  end if;
+  if (v_data #>> '{readings,0,positions,1,rate}')::numeric <> 7
+    or v_data #>> '{readings,0,positions,1,rateSource}' <> 'manual' then
+    raise exception 'Taux saisi manuellement modifié';
+  end if;
+  if v_data #>> '{readings,1,date}' <> '2026-10-01' or v_data #>> '{readings,1,positions}' <> '[]' then
+    raise exception 'Relevé sans placement modifié';
+  end if;
+end $$;
+
+-- Deuxième exécution : aucun effet supplémentaire.
+\ir ../../supabase/migrations/20261114095504_remove_jeqp_london.sql
 do $$
 begin
   if (select count(*) from public.market_instruments where isin = 'IE000U9J8HX9') <> 1 then
