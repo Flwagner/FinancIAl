@@ -19,6 +19,13 @@ Tout test dans un navigateur passe par le MCP **`playwright`** (`playwright_brow
 
 Recette :
 
+> **Important — une seule base Supabase, partagée entre dev et production.**
+>
+> Il n'existe **qu'une seule base de données Supabase** : elle sert à la fois au développement et à la production. Toute écriture pendant une recette est donc une écriture en production.
+>
+> - **Aucune modification de données** : ne jamais créer, mettre à jour ou supprimer des lignes (ni via l'interface, ni via l'API, ni via le MCP `supabase`). Seule la **lecture** est autorisée, et elle se fait **via l'interface**.
+> - **Exception** : si l'évolution demandée nécessite des opérations d'écriture en base (migration, correction de données), elles sont autorisées dans le cadre de cette évolution — pas au-delà.
+
 1. `npm run dev` (port 3000) si le serveur ne répond pas, puis `playwright_browser_navigate` vers `http://localhost:3000/`.
 2. Si l'écran d'accueil s'affiche : cliquer « Accéder à mon portefeuille », remplir « Adresse e-mail » et « Mot de passe », puis « Se connecter ».
 3. Vérifier le rendu dans **Vue d'ensemble** et dans **Portefeuille boursier** (ce sont deux vues distinctes avec des chiffres différents).
