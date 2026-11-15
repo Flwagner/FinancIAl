@@ -1,10 +1,11 @@
 name: Synchroniser les rendements de marché
 on:
   schedule:
-    # Cron en UTC : 06-19 UTC couvre 08:07-20:07 à Paris été (UTC+2) et hiver (UTC+1).
-    # L'étape "Heure locale" ignore les créneaux hors 08-20h Paris.
-    # Éviter la minute 00 : GitHub peut supprimer des runs lors des pics de charge.
-    - cron: '7 6-19 * * *'
+    # Toutes les heures à :30, de 07:30 à 17:30 UTC.
+    # Cela couvre 09:30–18:30 à Paris en hiver (UTC+1) et 09:30–19:30 en été (UTC+2).
+    # La fenêtre exacte n'a pas besoin d'être parfaite : la notification n'est
+    # affichée qu'une fois par jour côté service worker.
+    - cron: '30 7-17 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,40 +17,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Heure locale
-        id: paris
-        run: |
-          offset=$(( $(TZ=Europe/Paris date +%z | sed 's/00$//') ))
-          utc_hour=$(echo "${{ github.event.schedule }}" | cut -d' ' -f2)
-          hour=$(( utc_hour + offset ))
-          run=true
-          push=false
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "$hour" -lt 8 ] || [ "$hour" -gt 20 ]; then run=false; fi
-            if [ "$hour" -eq 10 ]; then push=true; fi
-          fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-          echo "push=$push" >> "$GITHUB_OUTPUT"
-      - if: steps.paris.outputs.run == 'true'
-        uses: actions/checkout@v4
-      - if: steps.paris.outputs.run == 'true'
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - if: steps.paris.outputs.run == 'true'
-        run: npm ci
-      - if: steps.paris.outputs.run == 'true'
-        run: npm test
-      - if: steps.paris.outputs.run == 'true'
-        name: Synchroniser les clôtures et les performances sur 365 jours
+      - run: npm ci
+      - run: npm test
+      - name: Synchroniser les clôtures et les performances sur 365 jours
         run: npm run market:sync
         env:
           SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           MARKET_SYNC_TOKEN: ${{ secrets.MARKET_SYNC_TOKEN }}
           PUSH_SYNC_TOKEN: ${{ secrets.PUSH_SYNC_TOKEN }}
-          PUSH_NOTIFICATIONS_ENABLED: ${{ steps.paris.outputs.push }}
+          PUSH_NOTIFICATIONS_ENABLED: 'true'
           VAPID_PUBLIC_KEY: ${{ vars.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}

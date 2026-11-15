@@ -27,16 +27,44 @@ self.addEventListener('fetch', event => {
   })());
 });
 
+// The worker receives a Push on every hourly sync. Only the first one of the
+// day may alert: later ones silently refresh the same notification.
+const NOTIFY_CACHE = 'financial-notify-v1';
+const shownDayUrl = new URL('last-notification-day', self.registration.scope).href;
+
+function parisDay() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+async function alreadyNotifiedToday() {
+  try {
+    const cache = await caches.open(NOTIFY_CACHE);
+    const response = await cache.match(shownDayUrl);
+    return (await response?.text()) === parisDay();
+  } catch { return false; }
+}
+
+async function rememberNotification() {
+  try {
+    const cache = await caches.open(NOTIFY_CACHE);
+    await cache.put(shownDayUrl, new Response(parisDay()));
+  } catch { /* The notification stays visible even if local storage is unavailable. */ }
+}
+
 self.addEventListener('push', event => {
   event.waitUntil((async () => {
     let payload = {};
     try { payload = event.data?.json() || {}; } catch { /* Always show a visible notification. */ }
+    const repeat = await alreadyNotifiedToday();
     await self.registration.showNotification('FinancIAl · Rendement global', {
       body: typeof payload.body === 'string' ? payload.body.slice(0, 500) : 'Ton rendement global a été actualisé.',
       icon: new URL('icons/icon-192.png', self.registration.scope).href,
       tag: 'financial-sync-impact',
+      silent: repeat,
+      renotify: !repeat,
       data: { url: self.registration.scope },
     });
+    if (!repeat) await rememberNotification();
   })());
 });
 

@@ -49,8 +49,9 @@ export async function finishPushSync(
   const env = options.env || process.env;
   const runId = env.GITHUB_RUN_ID || randomUUID();
   const configured = !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
-  // The workflow opts in only for its 10:07 Paris trigger, not the runner's clock.
-  // Hourly jobs and manual/local runs still record the daily comparison silently.
+  // The workflow enables delivery on every hourly job. The service worker decides
+  // whether to alert or silently refresh the notification, so only one alert is
+  // shown per day on each device.
   const notifyEnabled = configured && env.PUSH_NOTIFICATIONS_ENABLED === 'true';
   if (notifyEnabled) webPush.setVapidDetails(env.VAPID_SUBJECT!, env.VAPID_PUBLIC_KEY!, env.VAPID_PRIVATE_KEY!);
   const send = options.send || webPush.sendNotification;
