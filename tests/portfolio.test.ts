@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregate, currentReadings, currentSnapshot, defaultGoals, displayedRate, euro, evolutionReadings, monthlyReadings, normalizeGoals, percent, summarize, validatePortfolio } from '../src/lib/portfolio';
+import { aggregate, currentReadings, currentSnapshot, defaultGoals, displayedRate, euro, evolutionReadings, monthlyReadings, normalizeGoals, percent, percent1, summarize, validatePortfolio } from '../src/lib/portfolio';
 import { demo } from './fixtures/portfolio';
 test('progression : comparaison au dernier point mensuel réel validé de la courbe', () => {
   const readings = [
@@ -60,6 +60,17 @@ test('le gain annuel se dérive du rendement affiché, pas de sa valeur complèt
   assert.equal(Math.round(total * rate / 100), 23707);
   assert.equal(displayedRate(-4.567), -4.57);
   assert.equal(displayedRate(0), 0);
+});
+test('les pourcentages entiers ne portent pas de décimale inutile', () => {
+  assert.equal(percent(30), '30 %');
+  assert.equal(percent(9.54), '9,54 %');
+  assert.equal(percent(9.5), '9,5 %');
+  assert.equal(percent1(30), '30 %');
+  assert.equal(percent1(0), '0 %');
+  assert.equal(percent1(-12), '-12 %');
+  assert.equal(percent1(9.99), '10 %');
+  assert.equal(percent1(9.52), '9,5 %');
+  assert.equal(percent1(-4.25), '-4,3 %');
 });
 test('la projection ne remplace pas le dernier relevé réel', () => {
   const state = currentReadings(demo.readings);
