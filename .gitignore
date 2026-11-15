@@ -9,4 +9,5 @@ imports/
 
 # Fichiers locaux d'outillage des agents IA
 .agents/
+.playwright-mcp/
 skills-lock.json
