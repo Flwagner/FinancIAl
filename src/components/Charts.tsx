@@ -1,13 +1,13 @@
 'use client';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { colors, euro, type Reading } from '@/lib/portfolio';
+import { colors, euro, percent, percent1, type Reading } from '@/lib/portfolio';
 const tooltipStyle = { background: '#202624', border: '1px solid #39423d', borderRadius: 12, color: '#f1f5ef' };
 const rateColor = (rate: number) => rate < 0 ? '#fb7185' : '#a3e635';
 export function Distribution({ data, centerTotal, centerLabel = 'TOTAL' }: { data: { name: string; value: number }[]; centerTotal?: number; centerLabel?: string }) {
   data = [...data].sort((a, b) => b.value - a.value);
   const total = data.reduce((s, d) => s + d.value, 0);
   if (!total) return <p className="empty">Aucune valorisation disponible.</p>;
-  return <div className="distribution"><div className="donut"><ResponsiveContainer width="100%" height={230}><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={73} outerRadius={102} paddingAngle={3} stroke="none">{data.map((d, i) => <Cell key={d.name} fill={colors[i % colors.length]} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={v => euro(Number(v))} /></PieChart></ResponsiveContainer><div className="donut-center"><small>{centerLabel}</small><strong>{euro(centerTotal ?? total)}</strong></div></div><div className="legend">{data.map((d, i) => <div key={d.name}><i style={{ background: colors[i % colors.length] }} /><span>{d.name}</span><b>{(d.value / total * 100).toFixed(1)} %</b></div>)}</div></div>;
+  return <div className="distribution"><div className="donut"><ResponsiveContainer width="100%" height={230}><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={73} outerRadius={102} paddingAngle={3} stroke="none">{data.map((d, i) => <Cell key={d.name} fill={colors[i % colors.length]} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={v => euro(Number(v))} /></PieChart></ResponsiveContainer><div className="donut-center"><small>{centerLabel}</small><strong>{euro(centerTotal ?? total)}</strong></div></div><div className="legend">{data.map((d, i) => <div key={d.name}><i style={{ background: colors[i % colors.length] }} /><span>{d.name}</span><b>{percent1(d.value / total * 100)}</b></div>)}</div></div>;
 }
 export function Evolution({ readings, target }: { readings: Reading[]; target: number }) {
   const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));
@@ -19,5 +19,5 @@ export function Evolution({ readings, target }: { readings: Reading[]; target: n
 export function Rates({ data }: { data: { name: string; rate: number }[] }) {
   data = [...data].sort((a, b) => a.rate - b.rate);
   if (!data.length) return <p className="empty">Aucun placement.</p>;
-  return <ResponsiveContainer width="100%" height={240}><BarChart data={data} margin={{ top: 12, left: -25, right: 5, bottom: 20 }}><CartesianGrid vertical={false} stroke="#2a322d" /><XAxis dataKey="name" tick={{ fill: '#8d9a92', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-15} textAnchor="end" /><YAxis tick={{ fill: '#8d9a92', fontSize: 10 }} unit="%" axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} itemStyle={{ color: tooltipStyle.color }} formatter={v => <span style={{ color: rateColor(Number(v)) }}>{Number(v).toFixed(2)} %</span>} /><ReferenceLine y={0} stroke="#5b665e" /><Bar name="Taux" dataKey="rate" radius={[4, 4, 0, 0]} maxBarSize={35}>{data.map((d, i) => <Cell key={i} fill={rateColor(d.rate)} />)}</Bar></BarChart></ResponsiveContainer>;
+  return <ResponsiveContainer width="100%" height={240}><BarChart data={data} margin={{ top: 12, left: -25, right: 5, bottom: 20 }}><CartesianGrid vertical={false} stroke="#2a322d" /><XAxis dataKey="name" tick={{ fill: '#8d9a92', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-15} textAnchor="end" /><YAxis tick={{ fill: '#8d9a92', fontSize: 10 }} tickFormatter={v => percent1(Number(v))} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} itemStyle={{ color: tooltipStyle.color }} formatter={v => <span style={{ color: rateColor(Number(v)) }}>{percent(Number(v))}</span>} /><ReferenceLine y={0} stroke="#5b665e" /><Bar name="Taux" dataKey="rate" radius={[4, 4, 0, 0]} maxBarSize={35}>{data.map((d, i) => <Cell key={i} fill={rateColor(d.rate)} />)}</Bar></BarChart></ResponsiveContainer>;
 }
