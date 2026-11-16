@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Save, Trash2, Check, Download, ChevronDown, ChevronRight, LockKeyhole } from 'lucide-react';
+import { Plus, Save, Trash2, Check, ChevronDown, ChevronRight, LockKeyhole } from 'lucide-react';
 import { categories, currentSnapshot, euro, freezeCurrentMonth, monthlyReadings, saveCurrentReading, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
 import { isKnownMarketCode, livePositions, type MarketData } from '@/lib/market';
 import { errorMessage } from '@/lib/errors';
@@ -104,11 +104,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     const saved = await persist(freezeCurrentMonth(data, capture.total, capture.date, capture.capturedAt), `Montant de ${capturedMonth} figé : ${euro(capture.total)}.`);
     if (saved) freezeDialog.current?.close();
   }
-  function exportBackup() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    const a = document.createElement('a'); a.href = url; a.download = `financial-prive-${today()}.json`; a.click(); URL.revokeObjectURL(url);
-  }
-  return <><div className="page-heading"><div><h1>Mon portefeuille<span>.</span></h1></div><button className="button secondary" onClick={exportBackup}><Download size={16} />Exporter une sauvegarde</button></div>
+  return <><div className="page-heading"><div><h1>Mon portefeuille<span>.</span></h1></div></div>
     {error && <div className="alert" role="alert">{error}</div>}{message && <div className="notice" role="status"><Check size={16} />{message}</div>}
     <section className="panel editor">
     <p className="muted">Saisir un ISIN ou un code de cotation reconnu active le suivi marché. Le cours ajusté Yahoo est une approximation de rendement avec distributions réinvesties, dépendante de la qualité de la source. Si ses données manquent, le taux du relevé est conservé avec un avertissement.</p>
