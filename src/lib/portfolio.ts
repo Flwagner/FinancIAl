@@ -1,8 +1,9 @@
 import { isKnownMarketCode } from './market';
 export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market'; group?: string; rateAsOf?: string };
-export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number> };
+export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number>; kind?: 'current' };
+export type MonthlySnapshot = { month: string; capturedAt: string; total: number };
 export type Goals = { capital: number; annual: number; monthly: number };
-export type Portfolio = { readings: Reading[]; goals: Goals; updatedAt?: string };
+export type Portfolio = { readings: Reading[]; goals: Goals; updatedAt?: string; monthlySnapshots?: MonthlySnapshot[] };
 export function normalizeGoals(goals: Goals): Goals {
   return { ...goals, monthly: goals.annual / 12 };
 }
@@ -43,16 +44,44 @@ export function currentSnapshot(data: Portfolio) {
   const detailed = [...data.readings].filter(r => r.positions.length).sort((a, b) => a.date.localeCompare(b.date));
   return detailed.filter(r => !r.projected).at(-1) ?? detailed.at(-1);
 }
-export function monthlyReadings(readings: Reading[]) {
-  return readings.filter(r => r.date.endsWith('-01'));
+export function monthlyReadings(readings: Reading[], snapshots: MonthlySnapshot[] = []): Reading[] {
+  const frozenMonths = new Set(snapshots.map(s => s.month));
+  return [
+    ...readings.filter(r => r.kind !== 'current' && r.date.endsWith('-01') && !frozenMonths.has(r.date.slice(0, 7))),
+    ...snapshots.map(s => ({ id: `monthly-${s.month}`, date: `${s.month}-01`, projected: false, total: s.total, positions: [] })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
 }
-export function evolutionReadings(readings: Reading[], currentTotal: number) {
-  const history = monthlyReadings(readings);
+export function evolutionReadings(readings: Reading[], currentTotal: number, snapshots: MonthlySnapshot[] = []) {
+  const history = monthlyReadings(readings, snapshots);
   const { projection } = currentReadings(history);
   // La projection courante reflète le même portefeuille que la carte patrimoine.
   return history.map(reading => reading === projection ? { ...reading, total: currentTotal } : reading);
 }
+export function saveCurrentReading(data: Portfolio, draft: Reading, date: string, id: string): Portfolio {
+  const existing = data.readings.find(r => r.date === date);
+  let monthlySnapshots = data.monthlySnapshots;
+  // Une sauvegarde le 1er ne doit pas effacer un ancien point mensuel réel.
+  if (existing && !existing.projected && existing.kind !== 'current' && date.endsWith('-01')
+    && !monthlySnapshots?.some(s => s.month === date.slice(0, 7))) {
+    monthlySnapshots = [...(monthlySnapshots ?? []), { month: date.slice(0, 7), capturedAt: date, total: existing.total }];
+  }
+  const reading: Reading = { ...draft, id: existing?.id ?? id, date, projected: false, kind: 'current' };
+  return { ...data, ...(monthlySnapshots ? { monthlySnapshots } : {}), readings: [...data.readings.filter(r => r.date !== date), reading] };
+}
+export function freezeCurrentMonth(data: Portfolio, total: number, date: string, capturedAt: string): Portfolio {
+  const month = date.slice(0, 7);
+  const next = { ...data, monthlySnapshots: [...(data.monthlySnapshots ?? []).filter(s => s.month !== month), { month, total, capturedAt }] };
+  validatePortfolio(next);
+  return next;
+}
 export function validatePortfolio(data: Portfolio) {
+  const months = new Set<string>();
+  for (const snapshot of data.monthlySnapshots ?? []) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(snapshot.month) || months.has(snapshot.month)) throw new Error('Un seul montant figé par mois est autorisé, avec un mois valide.');
+    months.add(snapshot.month);
+    if (!Number.isFinite(snapshot.total) || snapshot.total < 0) throw new Error('Total mensuel invalide.');
+    if (!Number.isFinite(Date.parse(snapshot.capturedAt))) throw new Error('Date de capture invalide.');
+  }
   const dates = new Set<string>();
   for (const r of data.readings) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date) || !Number.isFinite(Date.parse(r.date)) || new Date(r.date).toISOString().slice(0, 10) !== r.date) throw new Error('Date de relevé invalide.');

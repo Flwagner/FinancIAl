@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { Plus, Save, Trash2, Check, Download, ChevronDown, ChevronRight } from 'lucide-react';
-import { categories, currentSnapshot, euro, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Save, Trash2, Check, Download, ChevronDown, ChevronRight, LockKeyhole } from 'lucide-react';
+import { categories, currentSnapshot, euro, freezeCurrentMonth, monthlyReadings, saveCurrentReading, summarize, validatePortfolio, type Portfolio, type Reading, type Position } from '@/lib/portfolio';
 import { isKnownMarketCode, livePositions, type MarketData } from '@/lib/market';
 import { errorMessage } from '@/lib/errors';
 const collapsedCategoriesKey = 'financial:editor:collapsed-categories';
@@ -16,6 +16,10 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const freezeDialog = useRef<HTMLDialogElement>(null);
+  const [capture, setCapture] = useState<{ date: string; capturedAt: string; total: number } | null>(null);
+  const capturedMonth = capture ? new Date(`${capture.date}T12:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : '';
+  const previousMonthly = capture ? monthlyReadings(data.readings, data.monthlySnapshots).find(r => !r.projected && r.date.slice(0, 7) === capture.date.slice(0, 7)) : undefined;
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set());
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   useEffect(() => {
@@ -80,13 +84,25 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
       validatePortfolio(next);
       await onSave(next);
       setMessage(success);
-    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+      return true;
+    } catch (e) { setError(errorMessage(e)); return false; } finally { setBusy(false); }
   }
   function saveCurrentPortfolio() {
     const date = today();
-    const existing = data.readings.find(r => r.date === date);
-    const reading: Reading = { ...draft, id: existing?.id ?? crypto.randomUUID(), date, projected: false };
-    void persist({ ...data, readings: [...data.readings.filter(r => r.date !== date), reading] }, 'Portefeuille du jour enregistré.');
+    void persist(saveCurrentReading(data, draft, date, crypto.randomUUID()), 'Portefeuille du jour enregistré. Les montants mensuels figés sont conservés.');
+  }
+  function previewFreeze() {
+    setError('');
+    try {
+      validatePortfolio({ ...data, readings: [draft] });
+      setCapture({ date: today(), capturedAt: new Date().toISOString(), total: draft.total });
+      freezeDialog.current?.showModal();
+    } catch (e) { setError(errorMessage(e)); }
+  }
+  async function confirmFreeze() {
+    if (!capture || busy) return;
+    const saved = await persist(freezeCurrentMonth(data, capture.total, capture.date, capture.capturedAt), `Montant de ${capturedMonth} figé : ${euro(capture.total)}.`);
+    if (saved) freezeDialog.current?.close();
   }
   function exportBackup() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -115,6 +131,14 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     </table></div>
     <button type="button" className="text-button" onClick={addPosition}><Plus size={16} />Ajouter un placement</button>
     {!draft.positions.length && <label className="standalone">Total actuel du portefeuille (sans détail)<input type="number" min="0" step="0.01" value={draft.total} onChange={e => setDraft({ ...draft, total: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>}
-    <div className="editor-footer"><strong>Total : {euro(draft.total)}</strong><div className="actions"><button className="button" disabled={busy} onClick={saveCurrentPortfolio}><Save size={16} />{busy ? 'Enregistrement…' : 'Enregistrer mon portefeuille'}</button></div></div></section>
+    <div className="editor-footer"><strong>Total : {euro(draft.total)}</strong><div className="actions"><button className="button secondary" disabled={busy} onClick={previewFreeze}><LockKeyhole size={16} />Figer le mois en cours</button><button className="button" disabled={busy} onClick={saveCurrentPortfolio}><Save size={16} />{busy ? 'Enregistrement…' : 'Enregistrer mon portefeuille'}</button></div></div></section>
+    <dialog ref={freezeDialog} className="panel goals-modal" aria-labelledby="freeze-title" onCancel={e => { if (busy) e.preventDefault(); }}>
+      <h2 id="freeze-title">Figer {capturedMonth}</h2>
+      <p>Conserver <strong>{euro(capture?.total ?? 0)}</strong> pour {capturedMonth} dans le graphique « Évolution du patrimoine » ?</p>
+      <p className="muted">Seul le total affiché est figé. Les prochaines modifications du portefeuille ne changeront pas ce montant. Le détail des placements reste à enregistrer séparément.</p>
+      {previousMonthly && <p role="status">Un montant de <strong>{euro(previousMonthly.total)}</strong> existe déjà pour ce mois. Il sera remplacé après confirmation.</p>}
+      {error && <p className="negative" role="alert">{error}</p>}
+      <div className="actions"><button type="button" className="button secondary" autoFocus disabled={busy} onClick={() => freezeDialog.current?.close()}>Annuler</button><button type="button" className="button" disabled={busy} onClick={() => void confirmFreeze()}>{busy ? 'Enregistrement…' : previousMonthly ? 'Remplacer le montant figé' : 'Confirmer le montant'}</button></div>
+    </dialog>
   </>;
 }
