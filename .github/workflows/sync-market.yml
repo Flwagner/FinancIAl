@@ -1,11 +1,9 @@
 name: Synchroniser les rendements de marché
 on:
   schedule:
-    # Toutes les heures à :30, de 07:30 à 17:30 UTC.
-    # Cela couvre 09:30–18:30 à Paris en hiver (UTC+1) et 09:30–19:30 en été (UTC+2).
-    # La fenêtre exacte n'a pas besoin d'être parfaite : la notification n'est
-    # affichée qu'une fois par jour côté service worker.
-    - cron: '30 7-17 * * *'
+    # Tous les jours à 09:30 à Paris, avec ajustement automatique été/hiver.
+    - cron: '30 9 * * *'
+      timezone: Europe/Paris
   workflow_dispatch:
 permissions:
   contents: read

@@ -146,6 +146,7 @@ test('jobs silencieux : enregistrement sans notification ni demande de livraison
 test('notifications : contenu sans montants, couleur symbolique, mention partielle', () => {
   assert.match(notificationBody(9.52, 9.68, false), /🟢 9,52 % → 9,68 % ↗/);
   assert.match(notificationBody(9.52, 9.41, true), /🔴.*↘\n−0,11 point.*Synchronisation partielle/);
+  assert.match(notificationBody(9.54, 9.54, false), /⚪ 9,54 % → 9,54 % →\n0 point aujourd’hui/);
   assert.doesNotMatch(notificationBody(9.52, 9.68, false), /€/);
 });
 test('Push : refuse les endpoints internes, ports, identifiants et faux domaines', () => {
@@ -170,7 +171,7 @@ test('job : enregistre même sans VAPID, ignore un portefeuille édité entre-te
   assert.equal(records.length, 1);
 });
 
-test('job : aucun envoi si inchangé ou si la RPC refuse un doublon', async () => {
+test('job : aucun envoi si la RPC refuse un doublon', async () => {
   let sends = 0;
   const rpc = (async (operation: string) => operation === 'context' ? context : { accepted: false, subscriptions: [{ endpoint: 'https://fcm.googleapis.com/test' }] }) as PushRpc;
   await finishPushSync(rpc, context, false, { env: {}, send: async () => { sends++; throw new Error('must not send'); } });
@@ -202,7 +203,7 @@ test('job : envoie un récapitulatif par appareil, nettoie les 410 sans afficher
   assert.deepEqual(expired, ['gone']);
 });
 
-test('job : pas de Push si le serveur constate un taux déjà notifié', async () => {
+test('job : respecte le refus de notification du serveur', async () => {
   const keys = webPush.generateVAPIDKeys();
   let sends = 0;
   const rpc = (async (operation: string) => operation === 'context' ? context : { accepted: true, impact, should_notify: false, subscriptions: [{ endpoint: 'https://fcm.googleapis.com/test' }] }) as PushRpc;
@@ -211,4 +212,23 @@ test('job : pas de Push si le serveur constate un taux déjà notifié', async (
     send: async () => { sends++; throw new Error('must not send'); },
   });
   assert.equal(sends, 0);
+});
+
+test('job : envoie aussi le récapitulatif quand le rendement est inchangé', async () => {
+  const keys = webPush.generateVAPIDKeys();
+  const sent: string[] = [];
+  const rpc = (async (operation: string) => operation === 'context' ? context : {
+    accepted: true, should_notify: true,
+    impact: { ...impact, before_rate: 9.54, after_rate: 9.54 },
+    subscriptions: [{ id: 'same', endpoint: 'https://fcm.googleapis.com/test', keys: { p256dh: 'test', auth: 'test' } }],
+  }) as PushRpc;
+  await finishPushSync(rpc, context, false, {
+    env: { VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey, VAPID_SUBJECT: 'mailto:test@example.com', PUSH_NOTIFICATIONS_ENABLED: 'true' },
+    send: async (_subscription, payload) => {
+      sent.push(JSON.parse(payload as string).body);
+      return { statusCode: 201, headers: {}, body: '' };
+    },
+  });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /9,54 % → 9,54 %.*\n0 point aujourd’hui/);
 });

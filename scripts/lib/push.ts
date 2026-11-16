@@ -49,7 +49,8 @@ export async function finishPushSync(
   const env = options.env || process.env;
   const runId = env.GITHUB_RUN_ID || randomUUID();
   const configured = !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
-  // The workflow enables delivery on every hourly job. The service worker decides
+  // The workflow enables delivery on the daily job, even for unchanged returns.
+  // The service worker decides
   // whether to alert or silently refresh the notification, so only one alert is
   // shown per day on each device.
   const notifyEnabled = configured && env.PUSH_NOTIFICATIONS_ENABLED === 'true';

@@ -31,10 +31,10 @@ begin
   if (r->'impact'->>'before_rate')::numeric <> 9.52 or (r->'impact'->>'reference_at')::timestamptz <> v_reference
     or not (r->>'should_notify')::boolean then raise exception 'TEST FAILED: missing previous-day baseline'; end if;
   if (r->'impact'->>'reference_changed')::boolean then raise exception 'TEST FAILED: unchanged holdings marked modified'; end if;
-  -- Same day: an hourly job cannot reset the baseline or resend an identical displayed rate.
+  -- A manual rerun preserves the baseline and may refresh an unchanged notification.
   p := p || jsonb_build_object('run_id', 'same', 'synced_at', v_time + interval '2 seconds', 'after_rate', 9.431);
   r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
-  if (r->'impact'->>'before_rate')::numeric <> 9.52 or (r->>'should_notify')::boolean then raise exception 'TEST FAILED: hourly reset or duplicate alert'; end if;
+  if (r->'impact'->>'before_rate')::numeric <> 9.52 or not (r->>'should_notify')::boolean then raise exception 'TEST FAILED: baseline reset or unchanged notification suppressed'; end if;
   p := p || jsonb_build_object('run_id', 'afternoon', 'synced_at', v_time + interval '3 seconds', 'after_rate', 9.48);
   r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
   if (r->'impact'->>'before_rate')::numeric <> 9.52 or not (r->>'should_notify')::boolean then raise exception 'TEST FAILED: afternoon delta is not daily'; end if;
@@ -56,7 +56,7 @@ begin
   r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
   if not (r->'impact'->>'reference_changed')::boolean or not (r->'impact'->>'partial')::boolean
     or (r->'impact'->>'before_rate')::numeric <> 9.52 then raise exception 'TEST FAILED: changed holdings not identified'; end if;
-  -- No Push configured: save comparison but do not advance notification deduplication.
+  -- No Push configured: save comparison without sending.
   p := p || jsonb_build_object('run_id', 'no-push', 'synced_at', v_time + interval '7 seconds', 'after_rate', 9.7, 'notify_enabled', false);
   r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
   if (r->>'should_notify')::boolean then raise exception 'TEST FAILED: unconfigured Push claimed'; end if;
@@ -66,13 +66,16 @@ begin
   -- Simulate a missed day: the latest known prior sample still becomes the next baseline.
   update public.portfolio_sync_impact set reference_at = reference_at - interval '3 days', synced_at = synced_at - interval '2 days'
     where user_id = (p->>'user_id')::uuid;
-  p := p || jsonb_build_object('run_id', 'after-gap', 'synced_at', v_time + interval '9 seconds', 'after_rate', 9.8);
+  p := p || jsonb_build_object('run_id', 'after-gap', 'synced_at', v_time + interval '9 seconds', 'after_rate', 9.7);
   r := public.push_sync('daily-test-only-token-at-least-32-characters', 'record', p);
   if (r->'impact'->>'before_rate')::numeric <> 9.7 or (r->'impact'->>'reference_changed')::boolean then raise exception 'TEST FAILED: baseline not rolled after skipped day'; end if;
+  if not (r->>'should_notify')::boolean or jsonb_array_length(r->'subscriptions') <> 1 then
+    raise exception 'TEST FAILED: unchanged daily return must notify';
+  end if;
   -- Une projection datée plus tard ne remplace jamais le dernier relevé réel,
   -- ni pour les pondérations du job, ni pour l'empreinte des placements.
-  update public.portfolios p set data = jsonb_set(p.data, '{readings}',
-      (p.data->'readings') || jsonb_build_array(jsonb_build_object(
+  update public.portfolios portfolio set data = jsonb_set(portfolio.data, '{readings}',
+      (portfolio.data->'readings') || jsonb_build_array(jsonb_build_object(
         'id', 'projection', 'date', '2099-01-01', 'projected', true, 'total', 3000,
         'positions', jsonb_build_array(jsonb_build_object('id', 'p', 'name', '', 'envelope', '',
           'category', 'Actions', 'code', '', 'amount', 3000, 'rate', 30, 'rateSource', 'manual'))))),
@@ -91,4 +94,4 @@ begin
     or (timestamptz '2026-11-12 23:00:00+00' at time zone 'Europe/Paris')::date <> date '2026-11-13' then raise exception 'TEST FAILED: Paris midnight'; end if;
 end $$;
 rollback;
-select 'PASS: daily baseline, hourly jobs, initialization, notification deduplication, goals, holdings, gaps, Paris time' as result;
+select 'PASS: daily baseline, unchanged notifications, initialization, duplicate runs, goals, holdings, gaps, Paris time' as result;
