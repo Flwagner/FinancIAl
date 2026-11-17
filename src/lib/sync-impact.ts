@@ -54,7 +54,7 @@ export function impactPresentation(before: number, after: number) {
   // Compare displayed hundredths, avoiding a green +0 or hidden changes.
   const rounded = (rate: number) => Math.round(Number(new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, useGrouping: false }).format(rate)) * 100);
   const delta = rounded(after) - rounded(before);
-  const direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+  const direction: 'up' | 'down' | 'flat' = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
   const points = `${delta > 0 ? '+' : delta < 0 ? '−' : ''}${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(Math.abs(delta) / 100)} point${Math.abs(delta) > 100 ? 's' : ''}`;
   return { direction, points, transition: `${percent(before)} → ${percent(after)}` };
 }
@@ -78,7 +78,7 @@ export function hasDailyReference(impact: SyncImpact) {
     && parisDay(impact.reference_at) < parisDay(impact.synced_at);
 }
 
-export function dailyImpactLabel(impact: SyncImpact, now = new Date()) {
-  return parisDay(impact.synced_at) === parisDay(now) ? 'aujourd’hui'
-    : `le ${new Date(impact.synced_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`;
+export function trendLabel(direction: 'up' | 'down' | 'flat') {
+  return direction === 'up' ? 'Tendance haussière'
+    : direction === 'down' ? 'Tendance baissière' : 'Tendance stable';
 }

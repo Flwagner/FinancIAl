@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateSyncImpact, coherentImpact, impactPresentation, applicableImpact, impactContextChanged, hasDailyReference, parisDay, dailyImpactLabel, type SyncImpact } from '../src/lib/sync-impact';
+import { calculateSyncImpact, coherentImpact, impactPresentation, applicableImpact, impactContextChanged, hasDailyReference, parisDay, trendLabel, type SyncImpact } from '../src/lib/sync-impact';
 import { finishPushSync, isAllowedPushEndpoint, notificationBody, type PushContext, type PushRpc } from '../scripts/lib/push';
 import type { MarketData, MarketReturn } from '../src/lib/market';
 import type { Reading } from '../src/lib/portfolio';
@@ -98,7 +98,7 @@ test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilit�
   assert.match(up, /8,4 % → 9,6 %/);
   assert.match(up, /capital-change positive/);
   assert.match(up, /arrow-up-right/);
-  assert.match(up, /Variation /);
+  assert.match(up, /Tendance haussière/);
   assert.match(up, /Référence :/);
   assert.match(up, /heure de Paris/);
   assert.doesNotMatch(up, /comparatif est conservé à titre indicatif/);
@@ -106,9 +106,11 @@ test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilit�
   assert.match(down, /capital-change negative/);
   assert.match(down, /arrow-down-right/);
   assert.match(down, /partielle/);
+  assert.match(down, /Tendance baissière/);
   const flat = renderToStaticMarkup(createElement(SyncImpactNote, { impact: { ...impact, after_rate: impact.before_rate } }));
   assert.match(flat, /capital-change muted/);
   assert.match(flat, /0 point/);
+  assert.match(flat, /Tendance stable/);
 });
 test('référence quotidienne : heure de Paris, été/hiver, initialisation et jour sans job', () => {
   assert.equal(parisDay('2026-11-12T23:00:00Z'), '2026-11-13');
@@ -119,8 +121,6 @@ test('référence quotidienne : heure de Paris, été/hiver, initialisation et j
   assert.equal(hasDailyReference({ ...impact, reference_at: impact.synced_at }), false);
   assert.equal(hasDailyReference({ ...impact, reference_at: null }), false);
   assert.equal(hasDailyReference({ ...impact, reference_at: 'invalid' }), false);
-  assert.equal(dailyImpactLabel(impact, now), 'aujourd’hui');
-  assert.equal(dailyImpactLabel(impact, new Date('2026-11-14T12:00:00Z')), 'le 13/11/2026');
   const pending = renderToStaticMarkup(createElement(SyncImpactNote, { impact: { ...impact, reference_at: null } }));
   assert.match(pending, /Référence quotidienne en cours d’initialisation/);
   assert.doesNotMatch(pending, /point|→/);
