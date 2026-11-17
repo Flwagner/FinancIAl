@@ -85,7 +85,7 @@ Sur **1 an**, le taux affiché reprend les taux et le périmètre du dashboard v
 
 Sur les autres périodes, les dates communes sont utilisées sans interpolation. Les lignes sans cotation, à montant nul, avec clôture ancienne de plus de sept jours, historique insuffisant ou interruption de plus de sept jours sont exclues et les poids restants renormalisés. Ces performances partielles ne doivent pas être comparées au taux annuel de toute la poche.
 
-Les cours sont lus en pagination depuis `market_prices`, uniquement après connexion et avec les droits existants ; aucune migration, écriture des relevés ou requête Yahoo depuis le navigateur n’est ajoutée. Les historiques sont relus automatiquement toutes les cinq minutes et au retour sur la fenêtre, sans bouton d’actualisation manuel. La synthèse affiche uniquement le montant détenu et le nombre de placements. Les rendements restent en devises de cotation, sans conversion EUR. Les approximations sont signalées. JEQP suit la cotation EUR de Xetra (même ISIN). Aucun dividende n’est ajouté aux cours ajustés.
+Les cours sont lus en pagination depuis `market_prices`, uniquement après connexion et avec les droits existants ; aucune écriture des relevés ni requête Yahoo depuis le navigateur. Les historiques sont relus automatiquement toutes les cinq minutes, au retour sur la fenêtre et après la synchronisation manuelle depuis l’en-tête commun. La synthèse affiche uniquement le montant détenu et le nombre de placements. Les rendements restent en devises de cotation, sans conversion EUR. Les approximations sont signalées. JEQP suit la cotation EUR de Xetra (même ISIN). Aucun dividende n’est ajouté aux cours ajustés.
 
 ### Estimations du dashboard
 
@@ -98,6 +98,18 @@ Les cours sont lus en pagination depuis `market_prices`, uniquement après conne
 - Une projection ne devient jamais réelle automatiquement : modifier sa nature et valider le relevé à la clôture.
 
 ## Rendements automatiques sur 365 jours
+
+### Synchronisation manuelle depuis l’application
+
+L’en-tête commun aux trois vues affiche **Montants au JJ/MM/AAAA** et **↻ Synchroniser les rendements**, sans date de rendement. La date concerne uniquement le portefeuille enregistré : synchroniser les cours ne modifie ni les montants ni cette date.
+
+Appliquer `supabase/migrations/20261117091351_manual_market_sync.sql`, puis déployer l’Edge Function `supabase/functions/sync-market/index.ts` avec son `deno.json`, ses dépendances relatives et **la vérification JWT activée**. La fonction utilise les variables serveur Supabase intégrées ; aucun nouveau secret GitHub ni secret dans le navigateur n’est nécessaire. Le schéma `financial_private` doit rester non exposé.
+
+Le bouton appelle directement Supabase, indépendamment de GitHub Actions. La session et les droits du propriétaire sont vérifiés côté serveur ; un verrou atomique limite les lancements manuels à un toutes les deux minutes, tous appareils confondus. Le synchroniseur et le cron partagent l’adaptateur Yahoo, le calcul et les validations SQL. Les dernières valeurs valides sont conservées en cas d’échec, avec un bilan partiel. Les chiffres et les historiques boursiers sont relus après l’opération. Le cron quotidien reste inchangé ; le lancement manuel n’envoie pas de notification Push.
+
+Un refus Yahoo **HTTP 429** reste possible depuis Supabase : le bouton ne contourne pas les quotas du fournisseur. Si la première requête est refusée ainsi, le reste du lot n’est pas envoyé. Les échecs manuels ne sont pas enregistrés dans les statuts de marché : le bilan reste en mémoire et disparaît au rafraîchissement. Les erreurs persistées par les anciennes versions du bouton sont ignorées à la lecture, sans masquer celles du cron ni les alertes de cours anciens. Le bilan d’échec utilise l’encadré rouge à puce commun aux alertes. Le symbole vert tourne pendant l’opération, sauf préférence système pour réduire les animations. Les logs serveur ne contiennent que les symboles et codes d’erreur maîtrisés.
+
+Tests sans données réelles : `npm test`, `npm run test:market-sync:db` (PostgreSQL Docker jetable sans réseau) et vérification Deno de l’Edge Function.
 
 ### Source et méthode
 

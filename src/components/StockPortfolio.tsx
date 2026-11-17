@@ -43,7 +43,7 @@ export default function StockPortfolio({ data, market }: { data: Portfolio; mark
     }).catch(() => { if (!controller.signal.aborted) setError('Impossible de lire les historiques de marché. Réessaie dans un instant.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [symbols, revision]);
+  }, [symbols, revision, market.returns]);
   const annual = annualStockPerformance(snapshot, market, envelope);
   const sourcePositions = annual.positions;
   const result = period === '1 an' ? annualStockSimulation(sourcePositions, history) : simulate(sourcePositions, history, period);
@@ -61,7 +61,6 @@ export default function StockPortfolio({ data, market }: { data: Portfolio; mark
   const sortedLines = sortStockLines(groupedLines, sort);
   const columns = [['name', 'Placement'], ['envelope', 'Enveloppe'], ['amount', 'Montant'], ['weight', 'Poids'], ['rate', `Performance · ${period}`], ['coverage', 'Couverture']] as const;
   return <section className="stocks">
-    <div className="page-heading"><h1>Portefeuille boursier<span>.</span></h1></div>
     <div className="stock-tabs" aria-label="Enveloppe">{['Tous', ...envelopeFilters].map(e => <button key={e} aria-pressed={envelope === e} onClick={() => { setEnvelope(e); setSelected(null); }}>{e}</button>)}</div>
     <div className="stock-summary">
       <div className="panel"><span className="muted">Montant détenu · {envelope}</span><strong>{euro(result.total)}</strong><small className="muted">Dernier détail : {snapshot ? dateLabel(snapshot.date) : 'aucun relevé'}</small></div>

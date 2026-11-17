@@ -111,7 +111,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     const saved = await persist(freezeCurrentMonth(data, capture.total, capture.date, capture.capturedAt), `Montant de ${capturedMonth} figé : ${euro(capture.total)}.`);
     if (saved) freezeDialog.current?.close();
   }
-  return <><div className="page-heading"><div><h1>Mon portefeuille<span>.</span></h1></div></div>
+  return <>
     {error && <div className="alert" role="alert">{error}</div>}{message && <div className="notice" role="status"><Check size={16} />{message}</div>}
     {staleDraft && <div className="notice" role="status">De nouveaux montants sont disponibles. Ton brouillon n’a pas été écrasé.
       <button type="button" className="text-button" onClick={() => {

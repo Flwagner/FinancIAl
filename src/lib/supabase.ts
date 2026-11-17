@@ -5,6 +5,7 @@ import type { MarketData } from './market';
 import type { SyncImpact } from './sync-impact';
 import type { History } from './stock-simulation';
 import type { MarketPrice } from './market';
+import { isLegacyManualSyncError, type MarketSyncResult } from './manual-market-sync';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
@@ -35,6 +36,21 @@ export async function savePortfolio(data: Portfolio, previous?: Portfolio) {
 }
 export const emptyPortfolio: Portfolio = { readings: [], goals: defaultGoals };
 
+export async function syncMarketReturns(): Promise<MarketSyncResult> {
+  if (!supabase) throw new Error('Supabase non configuré.');
+  const { data, error } = await supabase.functions.invoke('sync-market', { body: {}, timeout: 90_000 });
+  if (error) {
+    const response = error.context;
+    if (response instanceof Response && response.status === 429) throw new Error('Une synchronisation vient déjà d’être lancée. Patiente deux minutes avant de réessayer.');
+    if (response instanceof Response && [401, 403].includes(response.status)) throw new Error('Session expirée ou accès refusé. Reconnecte-toi pour synchroniser les rendements.');
+    throw new Error('Synchronisation impossible. Réessaie plus tard ; les dernières valeurs valides sont conservées.');
+  }
+  if (!data || !Number.isInteger(data.succeeded) || !Number.isInteger(data.failed) || !Number.isInteger(data.total)
+    || data.succeeded < 0 || data.failed < 0 || data.total < 1 || data.succeeded + data.failed !== data.total) throw new Error('Réponse de synchronisation invalide. Recharge la page pour vérifier les rendements.');
+  if (data.reason !== undefined && !['rate_limited', 'source_unavailable', 'publication_failed'].includes(data.reason)) throw new Error('Réponse de synchronisation invalide.');
+  return data;
+}
+
 // Pagination par instrument : ne pas tronquer silencieusement au plafond REST.
 export async function loadPriceHistory(symbols: string[], signal?: AbortSignal): Promise<History> {
   const client = supabase;
@@ -62,5 +78,5 @@ export async function loadMarketData(): Promise<MarketData> {
   ]);
   if (returns.error || statuses.error) return { returns: [], statuses: [], error: 'Données de marché indisponibles. Vérifie la migration SQL et la synchronisation ; les taux des relevés sont conservés.' };
   // Older deployments without the optional push migration still show market rates.
-  return { returns: returns.data || [], statuses: statuses.data || [], impact: impact.error ? null : impact.data as SyncImpact | null };
+  return { returns: returns.data || [], statuses: (statuses.data || []).map(status => ({ ...status, error: isLegacyManualSyncError(status.error) ? null : status.error })), impact: impact.error ? null : impact.data as SyncImpact | null };
 }

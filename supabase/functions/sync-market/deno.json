@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "../../../scripts/lib/yahoo": "../../../scripts/lib/yahoo.ts",
+    "../../../src/lib/market": "../../../src/lib/market.ts",
+    "../../../src/lib/portfolio": "../../../src/lib/portfolio.ts",
+    "../../../src/lib/sync-impact": "../../../src/lib/sync-impact.ts"
+  }
+}

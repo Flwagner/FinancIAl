@@ -1,0 +1,13 @@
+.portfolio-heading{align-items:center;gap:20px}
+.portfolio-heading h1{margin:0}
+.portfolio-status{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}
+.portfolio-status .date-chip{margin:0;font-size:11px;padding:11px 14px}
+.sync-market-button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:11px 14px;font-size:11px;line-height:1.5}
+.sync-market-button:hover:not(:disabled){border-color:var(--lime);color:var(--lime)}
+.sync-market-feedback{text-align:left}
+.sync-market-icon{display:inline-block}
+.sync-market-button[aria-busy="true"] .sync-market-icon{animation:market-sync-spin 1s linear infinite}
+@keyframes market-sync-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.sync-market-button[aria-busy="true"] .sync-market-icon{animation:none}}
+@media(max-width:1000px){.portfolio-heading{flex-wrap:wrap}.portfolio-status{justify-content:flex-start}}
+@media(max-width:640px){.portfolio-heading{align-items:flex-start;flex-direction:column}.portfolio-status{gap:8px}.portfolio-status .date-chip,.sync-market-button{font-size:10px;padding:9px 11px}}

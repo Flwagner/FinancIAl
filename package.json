@@ -12,6 +12,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:boursosync:db": "node scripts/test-boursosync-db.mjs",
     "test:comparison:db": "node scripts/test-comparison-db.mjs",
+    "test:market-sync:db": "node scripts/test-manual-market-sync-db.mjs",
     "market:sync": "tsx scripts/sync-market.ts",
     "market:check": "tsx scripts/sync-market.ts --dry-run"
   },
