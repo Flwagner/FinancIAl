@@ -42,10 +42,21 @@ function cgiSimulationPrices(history: History, now: Date): MarketPrice[] {
     return { date, close: value, adjusted_close: value };
   });
 }
+// Dernière clôture réellement disponible pour la sélection. Les cours sont
+// publiés après la séance : la date du jour peut donc être en avance d'un
+// week-end, d'un férié ou de la synchronisation du lendemain. Ancrer les
+// fenêtres glissantes sur cette date évite de raccourcir 1M et 6M.
+function lastAvailableClose(positions: Position[], history: History, today: string, now: Date) {
+  const settled = (prices: MarketPrice[]) => prices.filter(p => p.date < today && p.adjusted_close > 0 && Number.isFinite(p.adjusted_close)).map(p => p.date).sort().at(-1);
+  const recent = Object.values(history).flat().filter(p => p.date < today && Date.parse(today) - Date.parse(p.date) <= 7 * day && p.adjusted_close > 0 && Number.isFinite(p.adjusted_close)).map(p => p.date).sort().at(-1);
+  const simulated = recent ?? new Date(Date.parse(today) - day).toISOString().slice(0, 10);
+  const dates = positions.map(p => usesCgiSimulation(p, history) ? simulated : settled(history[referenceFor(p) || ''] || [])).filter((d): d is string => !!d);
+  return dates.sort().at(-1) ?? simulated;
+}
 export function simulate(positions: Position[], history: History, period: Period, now = new Date()) {
   const today = now.toISOString().slice(0, 10);
-  const target = new Date(today + 'T00:00:00Z');
-  if (period === '5J') target.setUTCDate(target.getUTCDate() - 5);
+  const anchor = period === '1M' || period === '6M' || period === 'Année' ? lastAvailableClose(positions, history, today, now) : today;
+  const target = new Date(anchor + 'T00:00:00Z');
   if (period === '1M' || period === '6M') {
     const date = target.getUTCDate();
     target.setUTCDate(1);
@@ -56,13 +67,17 @@ export function simulate(positions: Position[], history: History, period: Period
   if (period === 'Année') target.setUTCMonth(0, 1);
   // Sur un an, calculateReturn détermine la référence depuis la dernière
   // clôture de CHAQUE titre, exactement comme le synchroniseur du dashboard.
-  const start = period === 'Max' ? '' : target.toISOString().slice(0, 10);
+  // Sur 5J, on garde les cinq dernières séances communes, pas une fenêtre de
+  // cinq jours calendaires ancrée sur aujourd'hui : une clôture est publiée
+  // avec un jour de retard (voire trois après un week-end), et une fenêtre
+  // calendaire ne contiendrait alors qu'une ou deux clôtures.
+  const start = period === 'Max' || period === '5J' ? '' : target.toISOString().slice(0, 10);
   const lines = positions.map(position => {
     const simulated = usesCgiSimulation(position, history);
     const symbol = simulated ? 'SIMULATION:CGI' : referenceFor(position);
     const source = simulated ? cgiSimulationPrices(history, now) : history[symbol || ''] || [];
     const prices = source.filter(p => p.date < today && p.adjusted_close > 0 && Number.isFinite(p.adjusted_close)).sort((a, b) => a.date.localeCompare(b.date));
-    let selected = prices.filter(p => p.date >= start);
+    let selected = period === '5J' ? prices : prices.filter(p => p.date >= start);
     let annualError = '';
     if (period === '1 an' && symbol) {
       try {
@@ -73,8 +88,11 @@ export function simulate(positions: Position[], history: History, period: Period
     let reason = !symbol ? 'Cotation non disponible' : position.amount <= 0 ? 'Montant nul' : selected.length < 2 ? 'Historique insuffisant' : '';
     if (!reason && Date.parse(today) - Date.parse(selected.at(-1)!.date) > 7 * day) reason = 'Dernière clôture trop ancienne';
     if (!reason && annualError) reason = annualError;
-    if (!reason && period !== '1 an' && start && Date.parse(selected[0].date) - Date.parse(start) > 7 * day) reason = 'Historique incomplet sur cette période';
-    if (!reason && period !== '1 an' && selected.some((p, index) => index > 0 && Date.parse(p.date) - Date.parse(selected[index - 1].date) > 7 * day)) reason = 'Interruption dans les cours';
+    if (!reason && period !== '1 an' && period !== '5J' && start && Date.parse(selected[0].date) - Date.parse(start) > 7 * day) reason = 'Historique incomplet sur cette période';
+    // Sur 5J, seule la fin de l'historique compte : une interruption ancienne
+    // ne doit pas exclure une ligne dont les cinq dernières séances sont saines.
+    const window = period === '5J' ? selected.slice(-5) : selected;
+    if (!reason && period !== '1 an' && window.some((p, index) => index > 0 && Date.parse(p.date) - Date.parse(window[index - 1].date) > 7 * day)) reason = 'Interruption dans les cours';
     return { position, symbol, prices: selected, reason, rate: null as number | null, simulated };
   });
   const covered = lines.filter(l => !l.reason);
@@ -82,6 +100,7 @@ export function simulate(positions: Position[], history: History, period: Period
   // silencieux de leur fenêtre 365 jours vers la première date commune.
   const dateSets = covered.map(l => new Set(l.prices.map(p => p.date)));
   let dates = covered.length ? covered[0].prices.map(p => p.date).filter(d => dateSets.every(s => s.has(d))) : [];
+  if (period === '5J') dates = dates.slice(-5);
   if (period === '1 an' && covered.length) {
     const end = covered.map(l => l.prices.at(-1)!.date).sort().at(-1)!;
     // À la date finale, les autres places conservent leur dernière clôture

@@ -181,13 +181,35 @@ test('CGI : 5J, 1M et 6M suivent le même taux constant annualisé, pas 30 % à 
     assert.equal(r.lines[0].simulated, true);
   }
 });
-test('5J : dernières clôtures des cinq jours calendaires, bougie du jour exclue', () => {
+test('5J : cinq dernières séances communes, bougie du jour exclue', () => {
   const h = { 'WPEA.PA': Array.from({ length: 8 }, (_, i) => ({
     date: `2026-11-${String(i + 6).padStart(2, '0')}`, close: 100 + i, adjusted_close: 100 + i,
   })) };
   const r = simulate([a], h, '5J', now);
   assert.deepEqual(r.points.map(p => p.date), ['2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12']);
   assert.ok(Math.abs(r.rate! - (106 / 102 - 1) * 100) < 1e-9);
+  // Clôtures publiées avec du retard : la fenêtre suit la dernière séance
+  // disponible au lieu de se vider parce qu'elle est ancrée sur aujourd'hui.
+  const stale = simulate([a], h, '5J', new Date('2026-11-17T12:00:00Z'));
+  assert.deepEqual(stale.points.map(p => p.date), ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13']);
+  assert.equal(stale.points.length, 5);
+});
+test('1M et 6M : fenêtres ancrées sur la dernière clôture disponible', () => {
+  const lateNow = new Date('2026-11-17T12:00:00Z');
+  const dayMs = 86400000;
+  const start = Date.parse('2026-05-13T00:00:00Z');
+  const h = { 'WPEA.PA': Array.from({ length: 185 }, (_, i) => ({
+    date: new Date(start + i * dayMs).toISOString().slice(0, 10),
+    close: 100 + i,
+    adjusted_close: 100 + i,
+  })) };
+  // Dernière clôture au 13 nov. : 1M doit partir du 13 oct., pas du 17 oct.
+  const m1 = simulate([a], h, '1M', lateNow);
+  assert.equal(m1.points[0].date, '2026-10-13');
+  assert.equal(m1.points.at(-1)!.date, '2026-11-13');
+  const m6 = simulate([a], h, '6M', lateNow);
+  assert.equal(m6.points[0].date, '2026-05-13');
+  assert.equal(m6.points.at(-1)!.date, '2026-11-13');
 });
 test('simulation limitée à CGI en PEE sans historique, jamais aux autres placements ni aux vrais cours', () => {
   assert.equal(usesCgiSimulation(cgi, {}), true);
