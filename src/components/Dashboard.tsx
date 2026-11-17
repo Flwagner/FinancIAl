@@ -3,7 +3,7 @@ import { ArrowUpRight, TrendingUp, Wallet, ArrowDownRight, CircleDollarSign } fr
 import { aggregate, currentReadings, currentSnapshot, displayedRate, evolutionReadings, euro, percent, summarize, type Portfolio } from '@/lib/portfolio';
 import { Distribution, Evolution, Rates } from './Charts';
 import { groupedInvestments, livePositions, type MarketData } from '@/lib/market';
-import { applicableImpact, impactContextChanged } from '@/lib/sync-impact';
+import { coherentImpact } from '@/lib/sync-impact';
 import SyncImpactNote from './SyncImpactNote';
 import { annualStockPerformance } from '@/lib/stock-simulation';
 export default function Dashboard({ data, market = { returns: [], statuses: [] } }: { data: Portfolio; market?: MarketData }) {
@@ -11,7 +11,7 @@ export default function Dashboard({ data, market = { returns: [], statuses: [] }
   const live = livePositions(detailed, market);
   const positions = live.positions;
   const stats = summarize(positions, live.categoryRates);
-  const impact = applicableImpact(market.impact);
+  const impact = coherentImpact(detailed, market, data.updatedAt);
   const total = stats.total;
   // Le gain et l'équivalent mensuel découlent du taux affiché, pas de sa valeur
   // complète : 9,54 % × capital doit correspondre au gain affiché.
@@ -33,7 +33,7 @@ export default function Dashboard({ data, market = { returns: [], statuses: [] }
       <section className="metric featured"><div className="metric-label">Patrimoine actuel<Wallet size={18} /></div><strong>{euro(total)}</strong><div className="metric-note capital-change-note">{change !== null ? <><span className={`capital-change ${change >= 0 ? 'positive' : 'negative'}`}>{change >= 0 ? <ArrowUpRight size={22} /> : <ArrowDownRight size={22} />}{change > 0 ? '+' : ''}{euro(change)}</span><span>depuis le dernier relevé validé</span></> : 'Aucun relevé validé disponible'}</div></section>
       <section className="metric"><div className="metric-label">Gain annuel estimé<TrendingUp size={18} /></div><strong>{euro(annual)}</strong><div className="metric-note">Objectif <b>{euro(data.goals.annual)}</b></div><progress max={data.goals.annual} value={Math.max(0, annual)} /></section>
       <section className="metric"><div className="metric-label">Équivalent mensuel<CircleDollarSign size={18} /></div><strong>{euro(monthly)}</strong><div className="metric-note">Objectif <b>{euro(data.goals.monthly)}</b></div><progress max={data.goals.monthly} value={Math.max(0, monthly)} /></section>
-      <section className="metric"><div className="metric-label">Rendement global<ArrowUpRight size={18} /></div><strong className="lime">{percent(rate)}</strong>{impact ? <SyncImpactNote impact={impact} contextChanged={impactContextChanged(impact, stats.rate)} /> : <div className="metric-note">Taux pondéré par le capital</div>}<span className="tag">Estimation annuelle</span></section>
+      <section className="metric"><div className="metric-label">Rendement global<ArrowUpRight size={18} /></div><strong className="lime">{percent(rate)}</strong>{impact ? <SyncImpactNote impact={impact} /> : <div className="metric-note">{market.impact ? 'Comparatif en attente d’une référence de marché compatible.' : 'Taux pondéré par le capital'}</div>}<span className="tag">Estimation annuelle</span></section>
     </div>
     <div className="main-grid"><section className="panel"><div className="panel-heading"><div><h2>Évolution du patrimoine</h2><p>Montants figés chaque mois</p></div><span className="tag">Historique mensuel</span></div><Evolution readings={history} target={data.goals.capital} /><div className="chart-foot"><span><i className="line-key" />Relevés réels</span><span><i className="line-key dashed" />Projection</span><b>Cible : {euro(data.goals.capital)}</b></div></section><section className="panel"><div className="panel-heading"><div><h2>Allocation du portefeuille</h2><p>Un peu de recul sur ta diversification</p></div><span className="mini-icon"><Wallet size={17} /></span></div><Distribution data={groups} /></section></div>
     {(['Actions', 'SCPI'] as const).map(category => { const subset = positions.filter(p => p.category === category); return <section key={category} className="focus"><div className="section-heading"><h2><span>{category === 'Actions' ? '↗' : '▦'}</span> Focus {category.toLowerCase()}</h2><span>{subset.length} placements · {euro(summarize(subset).total)}</span></div><div className="focus-grid"><section className="panel"><h3>Répartition des placements</h3><Distribution data={groupedInvestments(subset).map(p => ({ name: p.name, value: p.value }))} /></section><section className="panel"><h3>{category === 'Actions' ? 'Enveloppes d’investissement' : 'Rendement par SCPI'}</h3>{category === 'Actions' ? <Distribution data={aggregate(subset, 'envelope')} /> : <Rates data={subset.map(p => ({ name: p.name, rate: p.rate }))} />}</section></div>{category === 'Actions' && <section className="panel rate-panel"><h3>Rendement par titre — ETF Monde pondéré</h3><Rates data={groupedInvestments(subset).map(p => ({ name: p.name, rate: p.rate }))} /></section>}</section>; })}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateSyncImpact, impactPresentation, applicableImpact, impactContextChanged, hasDailyReference, parisDay, dailyImpactLabel, type SyncImpact } from '../src/lib/sync-impact';
+import { calculateSyncImpact, coherentImpact, impactPresentation, applicableImpact, impactContextChanged, hasDailyReference, parisDay, dailyImpactLabel, type SyncImpact } from '../src/lib/sync-impact';
 import { finishPushSync, isAllowedPushEndpoint, notificationBody, type PushContext, type PushRpc } from '../scripts/lib/push';
 import type { MarketData, MarketReturn } from '../src/lib/market';
 import type { Reading } from '../src/lib/portfolio';
@@ -47,7 +47,7 @@ test('présentation : hausse, baisse, zéro et arrondis du taux affiché', () =>
   assert.equal(impactPresentation(9, 11).points, '+2 points');
   assert.equal(impactPresentation(-9.525, -9.524).points, '+0,01 point');
 });
-test('carte : conserve la dernière variation et signale un contexte modifié', () => {
+test('carte : masque la dernière variation si son contexte est modifié', () => {
   assert.equal(applicableImpact(impact), impact);
   assert.equal(impactContextChanged(impact, 9.6), false);
   assert.equal(impactContextChanged(impact, 8.4), true);
@@ -59,9 +59,38 @@ test('carte : conserve la dernière variation et signale un contexte modifié', 
   assert.equal(applicableImpact({ ...impact, after_rate: NaN }), null);
   assert.equal(applicableImpact({ ...impact, before_rate: Infinity }), null);
   const changed = renderToStaticMarkup(createElement(SyncImpactNote, { impact, contextChanged: true }));
-  assert.match(changed, /8,4 % → 9,6 %/);
-  assert.match(changed, /comparatif est conservé à titre indicatif/);
+  assert.doesNotMatch(changed, /8,4 % → 9,6 %/);
+  assert.match(changed, /en attente/);
   assert.equal(impactContextChanged({ ...impact, reference_changed: true }, 9.6), true);
+});
+
+const referenceImpact = { ...impact, reference_market: { ...beforeMarket, captured_at: impact.reference_at! } };
+test('comparatif : nouveaux montants PEA, mêmes poids avant/après et taux droit égal au rendement actuel', () => {
+  const changed = { ...reading, positions: reading.positions.map(p => ({ ...p, amount: p.id === '1' ? 2000 : 8000 })) };
+  const result = coherentImpact(changed, { ...afterMarket, impact: referenceImpact }, '2026-11-13T10:00:00Z', now)!;
+  assert.ok(Math.abs(result.before_rate - 6.8) < 1e-10);
+  assert.ok(Math.abs(result.after_rate - 7.2) < 1e-10);
+  assert.equal(result.reference_changed, false);
+  assert.equal(result.after_rate, calculateSyncImpact(changed, beforeMarket, afterMarket, now).after_rate);
+});
+test('comparatif : références absentes, mauvaise date et nouvelle ligne non couverte ne sont jamais devinées', () => {
+  assert.equal(coherentImpact(reading, { ...afterMarket, impact }, '2026-11-13T10:00:00Z', now), null);
+  assert.equal(coherentImpact(reading, { ...afterMarket, impact: { ...referenceImpact,
+    reference_market: { ...beforeMarket, captured_at: now.toISOString() } } }, version, now), null);
+  assert.equal(coherentImpact(reading, { ...afterMarket, impact: { ...referenceImpact,
+    reference_market: { returns: [], statuses: [], captured_at: impact.reference_at! } } }, version, now), null);
+  assert.equal(coherentImpact(reading, { ...afterMarket, loading: true, impact: referenceImpact }, version, now), null);
+});
+test('comparatif : ancien format conservé seulement à portefeuille et rendement identiques', () => {
+  assert.equal(coherentImpact(reading, { ...afterMarket, impact }, version, now), impact);
+  assert.equal(coherentImpact(reading, { ...beforeMarket, impact }, version, now), null);
+  assert.equal(coherentImpact(reading, { ...afterMarket, impact: { ...impact, reference_changed: true } }, version, now), null);
+});
+test('comparatif : changement de taux manuel ou de taux de synthèse appliqué des deux côtés', () => {
+  const changed = { ...reading, categoryRates: { SCPI: 8 } };
+  const result = coherentImpact(changed, { ...afterMarket, impact: referenceImpact }, version, now)!;
+  assert.equal(result.before_rate, 9.2);
+  assert.equal(result.after_rate, 10.4);
 });
 
 test('carte : rendu avant/après, flèche et couleurs de hausse/baisse/stabilité', () => {

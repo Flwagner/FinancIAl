@@ -2,6 +2,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { dailyImpactLabel, hasDailyReference, impactPresentation, type SyncImpact } from '@/lib/sync-impact';
 
 export default function SyncImpactNote({ impact, contextChanged = false }: { impact: SyncImpact; contextChanged?: boolean }) {
+  if (contextChanged) return <div className="metric-note sync-impact">Comparatif en attente d’une référence de marché compatible.</div>;
   if (!hasDailyReference(impact)) return <div className="metric-note sync-impact">Référence quotidienne en cours d’initialisation.</div>;
   const { direction, points, transition } = impactPresentation(impact.before_rate, impact.after_rate);
   const Icon = direction === 'up' ? ArrowUpRight : direction === 'down' ? ArrowDownRight : ArrowRight;
@@ -10,6 +11,5 @@ export default function SyncImpactNote({ impact, contextChanged = false }: { imp
     <span className="sync-transition">{transition}</span>
     <span className={`capital-change ${direction === 'up' ? 'positive' : direction === 'down' ? 'negative' : 'muted'}`}><Icon size={22} />{points}</span>
     <span>Variation {dailyImpactLabel(impact)}{impact.partial ? ' (synchronisation partielle)' : ''}</span>
-    {contextChanged && <span>Placements ou rendement modifiés : ce comparatif est conservé à titre indicatif.</span>}
   </div>;
 }
