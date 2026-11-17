@@ -144,10 +144,10 @@ test('job horaire : utilise le comparatif quotidien du serveur, même au retour 
   await finishPushSync(rpc, context, false, { env, send });
   daily = { ...daily, after_rate: 9.52 };
   await finishPushSync(rpc, context, false, { env, send });
-  assert.match(bodies[0], /−0,09 point aujourd’hui/);
+  assert.match(bodies[0], /−0,09 point$/);
   assert.match(bodies[1], /9,52 % → 9,48 %/);
-  assert.match(bodies[1], /−0,04 point aujourd’hui/);
-  assert.match(bodies[2], /0 point aujourd’hui/);
+  assert.match(bodies[1], /−0,04 point$/);
+  assert.match(bodies[2], /0 point$/);
 });
 
 test('jobs silencieux : enregistrement sans notification ni demande de livraison', async () => {
@@ -175,8 +175,8 @@ test('jobs silencieux : enregistrement sans notification ni demande de livraison
 test('notifications : contenu sans montants, couleur symbolique, mention partielle', () => {
   assert.match(notificationBody(9.52, 9.68, false), /🟢 9,52 % → 9,68 % ↗/);
   assert.match(notificationBody(9.52, 9.41, true), /🔴.*↘\n−0,11 point.*Synchronisation partielle/);
-  assert.match(notificationBody(9.54, 9.54, false), /⚪ 9,54 % → 9,54 % →\n0 point aujourd’hui/);
-  assert.doesNotMatch(notificationBody(9.52, 9.68, false), /€/);
+  assert.match(notificationBody(9.54, 9.54, false), /⚪ 9,54 % → 9,54 % →\n0 point$/);
+  assert.doesNotMatch(notificationBody(9.52, 9.68, false), /aujourd’hui|Estimation annuelle|€/);
 });
 test('Push : refuse les endpoints internes, ports, identifiants et faux domaines', () => {
   for (const endpoint of ['http://fcm.googleapis.com/x', 'https://127.0.0.1/x', 'https://fcm.googleapis.com.evil.test/x', 'https://evil.test/x', 'https://user:pass@fcm.googleapis.com/x', 'https://fcm.googleapis.com:8443/x']) assert.equal(isAllowedPushEndpoint(endpoint), false, endpoint);
@@ -227,8 +227,7 @@ test('job : envoie un récapitulatif par appareil, nettoie les 410 sans afficher
   });
   assert.equal(sent.length, 2);
   assert.match(sent[0], /Synchronisation partielle/);
-  assert.match(sent[0], /aujourd’hui/);
-  assert.match(sent[0], /Placements modifiés/);
+  assert.doesNotMatch(sent[0], /Placements modifiés|aujourd’hui|Estimation annuelle/);
   assert.deepEqual(expired, ['gone']);
 });
 
@@ -259,5 +258,5 @@ test('job : envoie aussi le récapitulatif quand le rendement est inchangé', as
     },
   });
   assert.equal(sent.length, 1);
-  assert.match(sent[0], /9,54 % → 9,54 %.*\n0 point aujourd’hui/);
+  assert.match(sent[0], /9,54 % → 9,54 %.*\n0 point$/);
 });

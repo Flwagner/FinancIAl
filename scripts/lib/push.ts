@@ -34,11 +34,11 @@ export function isAllowedPushEndpoint(endpoint: string) {
   } catch { return false; }
 }
 
-export function notificationBody(before: number, after: number, partial: boolean, referenceChanged = false) {
+export function notificationBody(before: number, after: number, partial: boolean) {
   const view = impactPresentation(before, after);
   const symbol = view.direction === 'up' ? '🟢' : view.direction === 'down' ? '🔴' : '⚪';
   const arrow = view.direction === 'up' ? '↗' : view.direction === 'down' ? '↘' : '→';
-  return `${symbol} ${view.transition} ${arrow}\n${view.points} aujourd’hui · Estimation annuelle${partial ? ' · Synchronisation partielle' : ''}${referenceChanged ? '\nPlacements modifiés depuis la référence quotidienne.' : ''}`;
+  return `${symbol} ${view.transition} ${arrow}\n${view.points}${partial ? ' · Synchronisation partielle' : ''}`;
 }
 
 export async function finishPushSync(
@@ -73,7 +73,7 @@ export async function finishPushSync(
     for (const subscription of result.subscriptions) {
       if (!isAllowedPushEndpoint(subscription.endpoint)) { failures++; continue; }
       try {
-        await send(subscription, JSON.stringify({ body: notificationBody(daily.before_rate, daily.after_rate, daily.partial, daily.reference_changed) }), {
+        await send(subscription, JSON.stringify({ body: notificationBody(daily.before_rate, daily.after_rate, daily.partial) }), {
           TTL: 3600, timeout: 15_000, urgency: 'normal',
         });
       } catch (error) {
