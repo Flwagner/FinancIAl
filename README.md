@@ -39,7 +39,7 @@ insert into public.portfolio_owner(user_id) values ('UUID_DE_TON_COMPTE');
 5. Renseigner `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` dans `.env.local`, puis relancer le serveur. Utiliser exclusivement la clé publique/publishable (ou anon historique), **jamais service_role / secret**.
 6. Se connecter. Les politiques RLS bloquent l’accès anonyme et tout compte non autorisé, même si une inscription était réactivée. L’autorisation n’est pas un simple contrôle d’interface.
 
-Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques et refusent désormais les sauvegardes concurrentes obsolètes via `save_portfolio_checked` (migration Boursosync requise). La synchronisation de marché ne connaît que les symboles publics. Si le comparatif/Push est activé, GitHub Actions reçoit aussi les **poids relatifs et taux nécessaires**, mais jamais les montants en euros, noms des placements, objectifs ou historique. Aucun stockage local persistant des finances dans le site ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
+Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques et refusent désormais les sauvegardes concurrentes obsolètes via `save_portfolio_checked` (migration Boursosync requise). La synchronisation de marché ne connaît que les symboles publics. Le comparatif/Push est calculé dans Supabase avec les **poids relatifs et taux nécessaires**, sans transmettre le portefeuille à GitHub Actions. Aucun stockage local persistant des finances dans le site ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
 
 ## Synchronisation BoursoBank
 
@@ -105,7 +105,7 @@ L’en-tête commun aux trois vues affiche **Montants au JJ/MM/AAAA** et **↻ S
 
 Appliquer `supabase/migrations/20261117091351_manual_market_sync.sql`, puis déployer l’Edge Function `supabase/functions/sync-market/index.ts` avec son `deno.json`, ses dépendances relatives et **la vérification JWT activée**. La fonction utilise les variables serveur Supabase intégrées ; aucun nouveau secret GitHub ni secret dans le navigateur n’est nécessaire. Le schéma `financial_private` doit rester non exposé.
 
-Le bouton appelle directement Supabase, indépendamment de GitHub Actions. La session et les droits du propriétaire sont vérifiés côté serveur ; un verrou atomique limite les lancements manuels à un toutes les deux minutes, tous appareils confondus. Le synchroniseur et le cron partagent l’adaptateur Yahoo, le calcul et les validations SQL. Les dernières valeurs valides sont conservées en cas d’échec, avec un bilan partiel. Les chiffres et les historiques boursiers sont relus après l’opération. Le cron quotidien reste inchangé ; le lancement manuel n’envoie pas de notification Push.
+Le bouton appelle directement Supabase. La session et les droits du propriétaire sont vérifiés côté serveur ; un verrou atomique limite les lancements manuels à un toutes les deux minutes, tous appareils confondus. Le synchroniseur et le cron Supabase partagent l’adaptateur Yahoo, le calcul et les validations SQL. Les dernières valeurs valides sont conservées en cas d’échec, avec un bilan partiel. Les chiffres et les historiques boursiers sont relus après l’opération. Le lancement manuel n’envoie pas de notification Push.
 
 Les instruments sont interrogés **un par un**, avec une pause de 400 ms : un burst depuis l’IP d’egress partagée des Edge Functions se fait refuser par Yahoo là où le cron Node passe. L’adaptateur envoie aussi un agent explicite et neutre (`FinanceSync/1.0`) : Yahoo répond **HTTP 429** aux agents vides, à `curl` et à `Deno/2.x` (le runtime des Edge Functions), alors qu’il accepte `node`. Sans cet agent, l’appel manuel échouait systématiquement en 429, jamais le cron GitHub Actions.
 
@@ -162,20 +162,65 @@ Le navigateur authentifié propriétaire peut lire les données de marché mais 
 
 Les fonctions privilégiées sont isolées dans le schéma non exposé `financial_private`. La fonction REST publique de synchronisation est un wrapper `SECURITY INVOKER` ; l'implémentation privée vérifie le jeton. Les privilèges implicites de Supabase sont révoqués avant les autorisations explicites, notamment `TRUNCATE`, et le trigger système `rls_auto_enable` n'est pas exécutable depuis l'API. Les deux tables d'administration (`portfolio_owner`, `market_sync_secrets`) n'ont volontairement aucune politique client : accès refusé par défaut, même après connexion.
 
-### Activer la GitHub Action quotidienne
+### Synchronisation quotidienne avec Supabase Cron
 
-1. Générer localement un jeton aléatoire : `openssl rand -hex 32`. Ne pas le committer ni le mettre dans une variable `NEXT_PUBLIC_*`.
-2. Dans le SQL Editor, enregistrer son empreinte (remplacer le texte par le jeton généré) :
+La migration `20261117150121_scheduled_market_sync.sql` installe `pg_cron`, `pg_net`,
+un jeton dédié dans Vault et un job **initialement inactif**. L’Edge Function
+`supabase/functions/daily-market-sync/index.ts` remplace le traitement Node quotidien :
+cours, comparatif et Web Push. Le bouton manuel conserve son endpoint et son authentification.
 
-```sql
-insert into public.market_sync_secrets(singleton, token_sha256)
-values(true, encode(sha256(convert_to('TON_JETON_ALEATOIRE', 'UTF8')), 'hex'))
-on conflict(singleton) do update set token_sha256 = excluded.token_sha256;
-```
+Le traitement quotidien est hébergé dans Supabase, sans runner GitHub ni ordinateur
+allumé. L’ancien workflow `sync-market.yml` est supprimé ; GitHub Actions conserve
+uniquement les vérifications et le déploiement de la PWA.
 
-3. Dans GitHub → Settings → Secrets and variables → Actions, ajouter le **secret** `MARKET_SYNC_TOKEN` avec le même jeton. L'URL et la clé publique utilisent les deux variables déjà configurées pour le déploiement.
-4. Pousser sur la branche par défaut. Dans Actions, lancer **Synchroniser les rendements de marché** manuellement pour amorcer les valeurs.
-5. Le workflow `.github/workflows/sync-market.yml` tourne **tous les jours à 09:30, heure de Paris**, y compris le week-end. Le cron (`30 9 * * *`) utilise le fuseau `Europe/Paris`, avec ajustement automatique été/hiver. Un passage quotidien suffit : le calcul utilise uniquement les clôtures des jours précédents, jamais le cours du jour. La minute `30` évite les pics de charge de début d’heure signalés par GitHub. Chaque passage peut envoyer un Push, **même si le rendement est inchangé**, dès qu'une référence quotidienne est disponible ; **le service worker n'affiche qu'une alerte par jour** et rafraîchit silencieusement la notification lors des passages suivants. GitHub peut retarder ou supprimer certaines exécutions en période de charge et désactiver les schedules des dépôts publics inactifs ; contrôler les journaux. L’heure de livraison exacte n’est pas garantie.
+**Rotation VAPID du 17 novembre 2026 :** l’ancienne clé privée étant perdue
+(GitHub ne permet pas de relire un secret), une nouvelle paire a été installée dans
+Supabase et GitHub. Une copie privée est conservée dans `.env.market`, ignoré par Git.
+Après mise à jour de la PWA, **désactiver puis réactiver les notifications sur chaque
+appareil** pour remplacer les abonnements liés à l’ancienne clé. Les erreurs Push
+pendant cette transition ne remettent pas en cause la synchronisation des cours.
+
+Installation sur un nouveau projet :
+
+1. Déployer `daily-market-sync` avec son `deno.json`, son lockfile et toutes ses
+   dépendances relatives. `verify_jwt = false` est nécessaire **uniquement pour
+   ce nouvel endpoint** : il vérifie lui-même une capacité aléatoire de 256 bits
+   via une RPC réservée au serveur. Ne pas changer `sync-market` (JWT activé).
+2. Dans Supabase → Edge Functions → Secrets, configurer `VAPID_PUBLIC_KEY`
+   (même valeur que `NEXT_PUBLIC_VAPID_PUBLIC_KEY` du build), `VAPID_SUBJECT`
+   et `VAPID_PRIVATE_KEY` (la paire doit correspondre).
+   Les clés serveur Supabase intégrées suffisent : aucun jeton marché/Push GitHub
+   n’est nécessaire au nouveau traitement.
+3. Sur un nouveau projet uniquement, enregistrer l’URL HTTPS dans Vault :
+   `select vault.create_secret('https://<project-ref>.supabase.co', 'daily_market_sync_url');`.
+   Le jeton `daily_market_sync_token` est généré par la migration, sans être affiché.
+4. Vérifier les contrôles sans écriture persistante avec
+   `tests/sql/daily-market-cron.sql`. Puis lancer un vrai passage avec
+   `select financial_private.invoke_daily_market_sync();` depuis SQL Editor.
+   **Ce passage met à jour les cours/comparatifs et peut envoyer un Push réel.**
+5. Vérifier le résultat dans les logs Edge et
+   `financial_private.daily_market_sync_runs` (statut `succeeded`, compteurs,
+   erreur Push). L’historique Cron indique seulement que la requête HTTP a été
+   mise en file ; il ne prouve pas la réussite de l’Edge Function.
+   La réponse HTTP est aussi consultable dans `net._http_response` via l’identifiant
+   retourné par le déclenchement.
+6. Après vérification, activer `daily-market-sync` dans Integrations → Cron.
+   Ne pas réactiver un ancien workflow GitHub de synchronisation en parallèle.
+   Le workflow `deploy.yml` conserve les tests et le déploiement de la PWA.
+
+Le job utilise `30 7,8 * * *` en UTC et ne déclenche l’appel qu’à **09:30 à
+Paris**, été comme hiver, week-ends compris. Un verrou atomique de cinq minutes
+empêche deux traitements quotidiens concurrents ; une journée déjà réussie n’est
+pas rejouée. Les échecs et résultats partiels peuvent être relancés. Le traitement
+Yahoo est séquentiel, espacé, borné à 65 secondes ; un 429 est retenté une seule
+fois puis interrompt les appels restants. Les dernières valeurs valides sont
+conservées. Un échec Push ne supprime pas les cours mais rend le résultat partiel.
+Les journaux ne contiennent ni jeton, ni abonnement, ni portefeuille.
+
+Les métadonnées d’exécution sont conservées dans le schéma privé. Surveiller leur
+croissance ainsi que `cron.job_run_details`. Ne jamais exposer `financial_private`
+ni Vault dans la Data API. `pg_net` place temporairement le jeton dédié dans sa
+file HTTP : seuls des administrateurs de confiance doivent avoir accès aux rôles SQL.
 
 ### Comportement dans l'application
 
@@ -204,7 +249,10 @@ La migration `*_reweight_daily_comparison.sql` conserve les taux de marché par 
 ### Configuration (une fois)
 
 1. Exécuter `supabase/migrations/20261113085126_push_sync_impact.sql`, puis `supabase/migrations/20261113094822_daily_return_reference.sql`, puis `supabase/migrations/20261114120000_latest_actual_reading.sql` dans le SQL Editor, après les schémas précédents. La dernière aligne la base de comparaison du job sur le dernier relevé **réel** détaillé, comme la carte : une projection future ne doit ni fournir le taux comparé, ni déclencher l'avertissement de placements modifiés. Elles ajoutent les abonnements, le comparatif quotidien et la RPC `push_sync`. Les clients ne peuvent gérer que leurs abonnements et lire leur comparatif ; seul le jeton du job peut écrire un comparatif. Le schéma `financial_private` doit rester **non exposé** dans les paramètres Data API. Lors de la mise à niveau, l’ancienne dernière mesure est conservée pour amorcer la prochaine journée ; l’ancien delta par job n’est pas présenté comme une variation quotidienne. Déployer le nouveau script avec cette migration : l’ancien script ne demande pas d’envoi quotidien.
-2. Générer un **nouveau jeton distinct** du jeton marché : `openssl rand -hex 32`. L'enregistrer comme secret GitHub **`PUSH_SYNC_TOKEN`**, puis enregistrer uniquement son empreinte dans Supabase :
+2. Le cron Supabase utilise une RPC réservée à l’Edge Function serveur ; il n’a
+   pas besoin de `PUSH_SYNC_TOKEN`. **Uniquement pour conserver les exécutions
+   locales du script Node**, générer un jeton distinct du jeton marché, le garder
+   dans `.env.market` comme `PUSH_SYNC_TOKEN`, puis enregistrer son empreinte :
 
 ```sql
 insert into financial_private.push_sync_secrets(singleton, token_sha256)
@@ -212,27 +260,56 @@ values(true, encode(sha256(convert_to('TON_NOUVEAU_JETON', 'UTF8')), 'hex'))
 on conflict(singleton) do update set token_sha256 = excluded.token_sha256;
 ```
 
-À ce stade, le **comparatif dans la carte fonctionne sans Web Push**. Sans `PUSH_SYNC_TOKEN`, le job continue à synchroniser le marché sans comparatif ni notification. `market:check` ne lit ni n'écrit les données privées.
+Le **comparatif dans la carte fonctionne sans Web Push** via le script local.
+Sans `PUSH_SYNC_TOKEN`, ce script synchronise seulement le marché.
+Le traitement quotidien Supabase exige sa configuration VAPID avant toute
+synchronisation pour ne pas terminer silencieusement sans Push.
+`market:check` ne lit ni n’écrit les données privées.
 
-3. Pour activer les notifications, générer localement une paire VAPID avec `npx web-push generate-vapid-keys`. Ne jamais committer la clé privée ni l'afficher dans les logs CI. Configurer dans GitHub → Settings → Secrets and variables → Actions :
+3. Pour une première installation, générer une paire VAPID avec
+   `npx web-push generate-vapid-keys`, sans afficher la clé privée dans des logs
+   partagés ni la committer. Configurer :
 
 | Type | Nom | Valeur |
 |---|---|---|
-| Variable | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Clé VAPID publique (la même pour le build et l'envoi) |
-| Secret | `VAPID_PRIVATE_KEY` | Clé VAPID privée, jamais `NEXT_PUBLIC_*` |
-| Variable | `VAPID_SUBJECT` | Contact réel, par exemple `mailto:toi@ton-domaine.fr` |
+| Variable GitHub | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Clé VAPID publique pour le build de la PWA |
+| Secret Supabase | `VAPID_PUBLIC_KEY` | Même clé publique pour l’envoi |
+| Secret Supabase | `VAPID_PRIVATE_KEY` | Clé VAPID privée, jamais `NEXT_PUBLIC_*` |
+| Secret Supabase | `VAPID_SUBJECT` | Contact réel, par exemple `mailto:toi@ton-domaine.fr` |
 
-Pour le développement, mettre seulement la clé publique dans `.env.local`. Les secrets d'envoi peuvent être placés dans `.env.market` (ignoré par Git), jamais dans les variables publiques. Les exécutions locales sont silencieuses par défaut ; `PUSH_NOTIFICATIONS_ENABLED=true` autorise explicitement un test d’envoi. Dans Actions, cette variable vaut `true` à chaque passage ; le service worker limite l’alerte à une par jour, même en cas de relance manuelle. Garder la paire VAPID stable ; après rotation, désactiver puis réactiver les abonnements sur chaque appareil.
+Pour le développement, mettre seulement la clé publique dans `.env.local`. Les secrets d'envoi peuvent être placés dans `.env.market` (ignoré par Git), jamais dans les variables publiques. Les exécutions locales sont silencieuses par défaut ; `PUSH_NOTIFICATIONS_ENABLED=true` autorise explicitement un test d’envoi. Dans l’Edge Function quotidienne, cette variable vaut `true` à chaque passage ; le service worker limite l’alerte à une par jour. Garder la paire VAPID stable ; après rotation, désactiver puis réactiver les abonnements sur chaque appareil.
 
 4. Redéployer la PWA pour intégrer la clé publique. Se connecter, puis cliquer **Activer les notifications** sur chaque appareil. Android/ordinateur : navigateur compatible ; iPhone/iPad : iOS/iPadOS 16.4+ et PWA ajoutée à l'écran d'accueil. L'autorisation n'est demandée qu'après ce clic. La désactivation ne concerne que l'appareil courant.
-5. Déclencher manuellement **Synchroniser les rendements de marché** dans Actions pour initialiser le comparatif. À chaque passage avec une référence disponible, la notification ressemble à `🟢 9,52 % → 9,68 % ↗ / +0,16 point`, utilisant exactement la référence quotidienne de la carte. Elle est aussi envoyée si le rendement est inchangé : `⚪ 9,54 % → 9,54 % → / 0 point`. Appliquer la migration `20261116093305_notify_unchanged_returns.sql` pour activer ce comportement. Les notifications système ne permettent pas de forcer la couleur du texte : pastilles et flèches remplacent le vert/rouge de la carte. Au clic, la PWA est ouverte au bon sous-chemin GitHub Pages.
+5. Déclencher `select financial_private.invoke_daily_market_sync();` dans
+   Supabase SQL Editor pour initialiser le comparatif. À chaque passage avec une
+   référence disponible, la notification ressemble à
+   `🟢 9,52 % → 9,68 % ↗ / +0,16 point`, utilisant la référence quotidienne de la
+   carte. Elle est aussi envoyée si le rendement est inchangé :
+   `⚪ 9,54 % → 9,54 % → / 0 point`. Appliquer la migration
+   `20261116093305_notify_unchanged_returns.sql` pour activer ce comportement.
+   Les notifications système ne permettent pas de forcer la couleur du texte :
+   pastilles et flèches remplacent le vert/rouge de la carte. Au clic, la PWA est
+   ouverte au bon sous-chemin GitHub Pages.
 
 ### Comportement et confidentialité
 
-- Au plus **une alerte par appareil et par jour**, décidée par le service worker : le premier Push de la journée (heure de Paris) s’affiche avec son, les suivants remplacent silencieusement la même notification (même `tag`) pour garder le taux à jour. Côté serveur, aucun envoi si le taux affiché à deux décimales n’a pas changé depuis la dernière notification ; un retour à la référence (zéro) peut être envoyé après une variation. Un nouvel essai du même run GitHub ne renvoie pas la notification. La décision et la référence sont enregistrées atomiquement pour éviter les doublons entre jobs concurrents.
-- Les erreurs de marché conservent les derniers taux valides. Un comparatif envoyé après un échec porte la mention **Synchronisation partielle**. Une erreur Push ne supprime pas les cours synchronisés mais fait échouer le job pour rester visible dans Actions.
+- Au plus **une alerte par appareil et par jour**, décidée par le service worker :
+  le premier Push de la journée (heure de Paris) s’affiche avec son, les suivants
+  remplacent silencieusement la même notification. Une journée déjà réussie n’est
+  pas rejouée ; une relance après un échec/une synchronisation partielle peut
+  renvoyer un Push avec un nouvel identifiant d’exécution.
+- Les erreurs de marché conservent les derniers taux valides. Un comparatif
+  envoyé après un échec porte la mention **Synchronisation partielle**. Une erreur
+  Push ne supprime pas les cours mais rend le job partiel, visible dans les
+  métadonnées d’exécution Supabase et sa réponse HTTP 503.
 - Les abonnements expirés (`404/410`) sont supprimés. Les autres erreurs ne sont pas retentées automatiquement. Un résultat déjà enregistré n'est pas renvoyé lors d'un nouvel essai du même run (priorité à l'absence de doublons plutôt qu'à une livraison garantie).
-- La RPC vérifie un jeton dédié stocké uniquement sous forme d'empreinte ; pas de `service_role`. Elle ne peut pas modifier le portefeuille. Elle expose seulement les pondérations/taux nécessaires, les cours publics et, lors de l'enregistrement du résultat, les abonnements du propriétaire concerné. Ces données ne sont pas journalisées. Le script n'envoie qu'aux fournisseurs Push autorisés (Google, Mozilla, Apple, Windows).
+- La RPC du cron est réservée au rôle serveur de l’Edge Function ; le jeton
+  d’appel du cron est stocké dans Vault. Les clés serveur restent dans Supabase,
+  jamais dans la PWA ou GitHub Actions. La RPC ne modifie pas le portefeuille :
+  elle fournit seulement les pondérations/taux nécessaires et les abonnements
+  du propriétaire concerné. Le script Node local conserve son jeton dédié,
+  vérifié par empreinte. Aucune de ces données n’est journalisée. Seuls les
+  fournisseurs Push autorisés (Google, Mozilla, Apple, Windows) sont contactés.
 - La notification affiche les **taux globaux sur l'écran verrouillé**, jamais les montants ni les positions. Le contenu est chiffré par Web Push. L'abonnement reste actif après déconnexion : sur un appareil partagé, **désactiver les notifications avant de se déconnecter**.
 - Le comparatif est conservé dans Supabase, pas dans le navigateur. L'application relit le marché/comparatif toutes les cinq minutes et au retour sur la fenêtre.
 
