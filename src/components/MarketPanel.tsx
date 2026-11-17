@@ -28,10 +28,9 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
       catch { if (active && request === revision.current) setMarket({ returns: [], statuses: [], error: 'Lecture des données de marché impossible.' }); }
     }
     void update();
-    const timer = window.setInterval(() => void update(), 5 * 60 * 1000);
-    const onFocus = () => { void update(); };
-    window.addEventListener('focus', onFocus);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+    // Pas de relecture périodique ni au retour sur la fenêtre : seule une
+    // synchronisation manuelle ou un rechargement de la page actualise le marché.
+    return () => { active = false; };
   }, []);
   async function synchronize() {
     if (syncLock.current) return;

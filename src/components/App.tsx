@@ -35,11 +35,13 @@ export default function App() {
       finally { if (active && revision === request) setLoading(false); }
     }
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 60 * 1000);
-    const onFocus = () => { void refresh(); };
-    window.addEventListener('focus', onFocus);
-    const { data: listener } = client.auth.onAuthStateChange(() => { void refresh(); });
-    return () => { active = false; listener.subscription.unsubscribe(); window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
+    // Aucune actualisation de fond : les données ne sont relues qu'au chargement,
+    // à la connexion/déconnexion, après une sauvegarde ou une synchro manuelle.
+    // TOKEN_REFRESHED (renouvellement horaire du jeton) ne doit pas recharger.
+    const { data: listener } = client.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') void refresh();
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
   async function signIn(e: React.FormEvent) {
     e.preventDefault(); if (!supabase) return;

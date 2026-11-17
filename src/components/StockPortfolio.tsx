@@ -20,13 +20,6 @@ export default function StockPortfolio({ data, market }: { data: Portfolio; mark
   const [history, setHistory] = useState<History>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    const refresh = () => setRevision(r => r + 1);
-    const timer = window.setInterval(refresh, 5 * 60 * 1000);
-    window.addEventListener('focus', refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, []);
   const chartRef = useRef<HTMLElement>(null);
   function openDetail(id: string) {
     setSelected(id);
@@ -43,7 +36,7 @@ export default function StockPortfolio({ data, market }: { data: Portfolio; mark
     }).catch(() => { if (!controller.signal.aborted) setError('Impossible de lire les historiques de marché. Réessaie dans un instant.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [symbols, revision, market.returns]);
+  }, [symbols, market.returns]);
   const annual = annualStockPerformance(snapshot, market, envelope);
   const sourcePositions = annual.positions;
   const result = period === '1 an' ? annualStockSimulation(sourcePositions, history) : simulate(sourcePositions, history, period);

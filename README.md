@@ -63,7 +63,7 @@ Tests des écritures : `npm run test:boursosync:db` utilise exclusivement un Pos
 
 Le dashboard et les objectifs affichent les placements du dernier relevé détaillé disponible dans `portfolios.data.readings`, quelle que soit sa date. Le caractère projeté du point global ne masque pas les placements associés.
 
-Seule la courbe utilise les totaux globaux datés du premier jour de chaque mois. Les détails plus récents restent visibles dans le dashboard sans ajouter de point quotidien à la courbe. Les montants sont relus toutes les 60 secondes et au retour sur la fenêtre ; les taux de marché toutes les 5 minutes.
+Seule la courbe utilise les totaux globaux datés du premier jour de chaque mois. Les détails plus récents restent visibles dans le dashboard sans ajouter de point quotidien à la courbe. Les montants et les taux de marché sont relus au chargement de la page, après une connexion, une sauvegarde ou une synchronisation manuelle. Aucune actualisation périodique ni au retour sur la fenêtre : recharger la page pour reprendre les modifications faites ailleurs (extension BoursoBank, autre appareil).
 
 ## Calculs V1
 
