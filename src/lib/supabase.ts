@@ -8,22 +8,30 @@ import type { MarketPrice } from './market';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
+// Conserver la forme JSON réellement lue pour le CAS : normalizeGoals peut
+// corriger en mémoire un ancien monthly sans que la base ait été modifiée.
+const loadedDocuments = new WeakMap<Portfolio, unknown>();
 export async function loadPortfolio(): Promise<Portfolio | null> {
   if (!supabase) throw new Error('Supabase non configuré.');
   const { data, error } = await supabase.from('portfolios').select('data, updated_at').maybeSingle();
   if (error) throw error;
   if (!data?.data) return null;
   const portfolio = data.data as Portfolio;
-  return { ...portfolio, goals: normalizeGoals(portfolio.goals), updatedAt: data.updated_at };
+  const result = { ...portfolio, goals: normalizeGoals(portfolio.goals), updatedAt: data.updated_at };
+  loadedDocuments.set(result, data.data);
+  return result;
 }
 export async function savePortfolio(data: Portfolio, previous?: Portfolio) {
   if (!supabase) throw new Error('Supabase non configuré.');
   const values = portfolioSaveValues(data, previous);
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) throw new Error('Connexion requise.');
-  const { data: saved, error } = await supabase.from('portfolios').upsert({ user_id: user.id, ...values }).select('updated_at').single();
+  // Jamais de repli vers un upsert aveugle : le document a pu être synchronisé
+  // depuis une autre fenêtre ou l'extension pendant une saisie.
+  const expected = previous?.updatedAt ? loadedDocuments.get(previous) ?? portfolioSaveValues(previous).data : null;
+  const { data: saved, error } = await supabase.rpc('save_portfolio_checked', { next_data: values.data, expected_data: expected });
   if (error) throw error;
-  return saved.updated_at as string;
+  return saved as string;
 }
 export const emptyPortfolio: Portfolio = { readings: [], goals: defaultGoals };
 

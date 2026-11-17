@@ -1,4 +1,10 @@
-import { normalizeGoals, validatePortfolio, type Portfolio } from './portfolio';
+import { normalizeGoals, validatePortfolio, type Portfolio, type Reading } from './portfolio';
+
+// JSONB peut réordonner les clés entre deux lectures sans changer les données.
+export function readingsFingerprint(readings: Reading[]) {
+  return JSON.stringify(readings, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
+}
 
 export function portfolioSaveValues(portfolio: Portfolio, previous?: Portfolio, now = new Date().toISOString()) {
   const { updatedAt: _, ...data } = { ...portfolio, goals: normalizeGoals(portfolio.goals) };

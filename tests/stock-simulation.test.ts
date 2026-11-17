@@ -42,6 +42,19 @@ test('filtrage des enveloppes et références explicites', () => {
   assert.equal(stockPositions([a, b], 'CTO')[0].id, 'b');
   assert.equal(referenceFor({ ...a, code: 'GB00BLD4ZL17' }), 'BTC-EUR');
 });
+test('CTO ne signifie pas Actions : obligations, or et bitcoin exclus des pondérations et performances actions', () => {
+  const alternatives = [
+    { ...b, id: 'bonds', category: 'Obligations', code: 'IE00BDBRDM35', rate: 99 },
+    { ...b, id: 'gold', category: 'Or', code: 'FRSGE001BQW9', rate: 99 },
+    { ...b, id: 'bitcoin', category: 'Bitcoin', code: 'GB00BLD4ZL17', rate: 99 },
+  ];
+  assert.deepEqual(stockPositions([a, b, ...alternatives]), [a, b]);
+  assert.deepEqual(stockPositions([a, b, ...alternatives], 'CTO'), [b]);
+  const current: Reading = { id: 'test', date: '2026-11-13', projected: false, total: 1750, positions: [a, b, ...alternatives] };
+  const result = annualStockPerformance(current, { returns: [], statuses: [] }, 'CTO', now);
+  assert.equal(result.total, b.amount);
+  assert.equal(result.rate, b.rate);
+});
 test('carte thermique : surface proportionnelle, sans perte ni débordement', () => {
   const tiles = heatmapLayout([{ id: 'a', amount: 750 }, { id: 'b', amount: 200 }, { id: 'c', amount: 50 }, { id: 'z', amount: 0 }]);
   assert.equal(tiles.length, 3);

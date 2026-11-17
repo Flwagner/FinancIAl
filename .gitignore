@@ -6,6 +6,9 @@ out/
 !.env.example
 *.tsbuildinfo
 imports/
+boursosync-private*.json
+supabase/.temp/
+extension/project.json
 
 # Fichiers locaux d'outillage des agents IA
 .agents/

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Boursosync</title><link rel="stylesheet" href="../style.css"></head>
+<body><h1>Boursosync <small>→ FinancIAl</small></h1>
+<p>Lecture seule de BoursoBank. Aucun ordre ni identifiant bancaire demandé.</p>
+<form id="login" hidden><h2>Connecter mon compte FinancIAl</h2>
+<p>Une seule fois avec les identifiants de l’application FinancIAl, <strong>pas ceux de BoursoBank</strong>. Le mot de passe n’est pas conservé.</p>
+<label>Adresse e-mail FinancIAl<input id="email" type="email" autocomplete="username" required></label>
+<label>Mot de passe FinancIAl<input id="password" type="password" autocomplete="current-password" required></label>
+<button id="connect" type="submit">Se connecter à FinancIAl</button></form>
+<section id="connected" hidden><p id="connection-status"></p><button id="disconnect" class="secondary">Déconnecter l’extension</button></section>
+<div class="actions"><button id="sync" disabled>Confirmer la synchronisation</button></div>
+<p id="status" role="status" aria-live="polite"></p>
+<table><thead><tr><th>Placement / capture</th><th>Montant</th><th>Destination</th></tr></thead><tbody id="rows"></tbody></table>
+<p>La page est lue automatiquement à l’ouverture. Les titres sont reconnus par ISIN et enveloppe. Pour les autres lignes, choisis une destination ou « Ignorer ». Rien n’est envoyé avant confirmation. Captures valables 30 minutes.</p>
+<script type="module" src="controller.mjs"></script></body></html>

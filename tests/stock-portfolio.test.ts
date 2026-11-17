@@ -57,3 +57,20 @@ test('les tuiles affichent le libellé puis le ticker, même pour un code ISIN',
   assert.match(html, /<small class="muted">PCEU · FR0013412038<\/small>/);
   assert.doesNotMatch(html, /<b>PCEU<\/b>/);
 });
+
+test('les actifs non Actions détenus en CTO ne figurent ni dans les tuiles ni dans le tableau boursier', () => {
+  const data: Portfolio = {
+    goals: { capital: 10000, annual: 1000, monthly: 1000 / 12 },
+    readings: [{ id: 'r', date: '2026-11-13', projected: false, total: 400, positions: [
+      { id: 'j', name: 'JEQP', envelope: 'CTO', category: 'Actions', code: 'IE000U9J8HX9', amount: 100, rate: 10 },
+      { id: 'b', name: 'Obligations CTO', envelope: 'CTO', category: 'Obligations', code: 'IE00BDBRDM35', amount: 100, rate: 90 },
+      { id: 'o', name: 'Or CTO', envelope: 'CTO', category: 'Or', code: 'FRSGE001BQW9', amount: 100, rate: 90 },
+      { id: 'c', name: 'Bitcoin CTO', envelope: 'CTO', category: 'Bitcoin', code: 'GB00BLD4ZL17', amount: 100, rate: 90 },
+    ] }],
+  };
+  const html = renderToStaticMarkup(createElement(StockPortfolio, { data, market: { returns: [], statuses: [] } }));
+  assert.equal((html.match(/class="stock-line"/g) || []).length, 1);
+  assert.equal((html.match(/class="stock-tile /g) || []).length, 1);
+  assert.match(html, /JEQP/);
+  assert.doesNotMatch(html, /Obligations CTO|Or CTO|Bitcoin CTO|IE00BDBRDM35|FRSGE001BQW9|GB00BLD4ZL17/);
+});

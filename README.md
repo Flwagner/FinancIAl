@@ -39,7 +39,25 @@ insert into public.portfolio_owner(user_id) values ('UUID_DE_TON_COMPTE');
 5. Renseigner `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` dans `.env.local`, puis relancer le serveur. Utiliser exclusivement la clé publique/publishable (ou anon historique), **jamais service_role / secret**.
 6. Se connecter. Les politiques RLS bloquent l’accès anonyme et tout compte non autorisé, même si une inscription était réactivée. L’autorisation n’est pas un simple contrôle d’interface.
 
-Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques. V1 personnelle : éviter l’édition simultanée sur plusieurs appareils (la dernière sauvegarde gagne). La synchronisation de base ne connaît que les symboles publics. Si le comparatif/Push est activé, GitHub Actions reçoit aussi les **poids relatifs et taux nécessaires**, mais jamais les montants en euros, noms des placements, objectifs ou historique. Aucun stockage local persistant des finances ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
+Le portefeuille est pour l'instant un document JSONB privé versionné par ses relevés, associé au compte propriétaire. Les données de marché utilisent des tables séparées (voir ci-dessous) ; la normalisation complète des comptes/placements/relevés reste une évolution distincte. Les mises à jour du portefeuille sont atomiques et refusent désormais les sauvegardes concurrentes obsolètes via `save_portfolio_checked` (migration Boursosync requise). La synchronisation de marché ne connaît que les symboles publics. Si le comparatif/Push est activé, GitHub Actions reçoit aussi les **poids relatifs et taux nécessaires**, mais jamais les montants en euros, noms des placements, objectifs ou historique. Aucun stockage local persistant des finances dans le site ; Supabase conserve la session d’authentification dans le navigateur. Se déconnecter sur un appareil partagé.
+
+## Synchronisation BoursoBank
+
+L’extension Chrome est dans [`extension/`](extension/README.md), sans build et indépendante du déploiement Next.js. Lecture volontaire des pages, associations explicites par compte/ISIN, aperçu puis confirmation dans l’extension. Aucun identifiant bancaire ni accès à l’API privée de la banque.
+
+Appliquer `supabase/migrations/20261116141044_boursosync.sql` **avant de déployer cette version du site**. Elle ajoute les fonctions de configuration et de synchronisation, leurs tables privées avec RLS et la sauvegarde concurrente `save_portfolio_checked`. Elle ne change aucun montant existant et ne crée aucun raccordement par défaut. Le schéma `financial_private` doit rester non exposé dans la Data API.
+
+La nouvelle sauvegarde compare atomiquement le document précédent : contrairement à la V1, la dernière sauvegarde ne gagne plus silencieusement. En cas de conflit, recharger les données. Le brouillon de saisie est conservé mais doit être rechargé explicitement si des relevés ont changé. Tous les clients doivent utiliser cette nouvelle version pour bénéficier de la protection.
+
+Tout se fait dans **l’extension** : connexion initiale au compte FinancIAl, lecture de la page BoursoBank, vérification puis confirmation. Aucun fichier à échanger ni panneau de configuration dans l’application. La déconnexion et la révocation de l’accès se font dans l’extension. Jeton dédié révocable valable 180 jours, empreinte seulement côté base ; captures temporaires de 30 minutes, sans synchronisation Chrome.
+
+Les destinations sont reconnues par ISIN exact (ou alias de cotation connu) et enveloppe. Les cas ambigus ou sans ISIN se choisissent dans le popup. La capacité consulte un catalogue limité sans montants ni taux ; associations et montants sont enregistrés atomiquement après confirmation. Le mot de passe et la session Supabase temporaire ne sont jamais persistés.
+
+Appliquer également la migration `*_remove_boursosync_cash.sql` : les espèces du PEA/CTO ne sont plus capturées ni acceptées à la synchronisation. Aucun montant existant n’est supprimé.
+
+Appliquer ensuite `*_boursosync_extension_only.sql`. `npm run extension:prepare` génère `extension/project.json` avec l’URL, la clé publique et les alias ISIN uniquement ; cette préparation est automatique avant `dev` et `build`.
+
+Tests des écritures : `npm run test:boursosync:db` utilise exclusivement un PostgreSQL Docker jetable **sans réseau ni données réelles**.
 
 ## Situation actuelle et historique mensuel
 
