@@ -1,4 +1,10 @@
 import { calculateReturn, type MarketPrice, type MarketReturn } from '../../src/lib/market';
+import { YahooRateLimitError } from '../../src/lib/manual-market-sync';
+
+// Yahoo Finance renvoie 429 aux agents absents ou signés par un runtime : `curl`
+// et `Deno/2.x` des Edge Functions sont refusés, `node` du cron accepté. Un agent
+// explicite et neutre garde les deux exécutants sur le même accès.
+export const yahooUserAgent = 'FinanceSync/1.0';
 
 type ChartResult = {
   meta: { symbol: string; currency: string; exchangeTimezoneName: string };
@@ -28,7 +34,8 @@ export function parseYahooChart(payload: unknown, expectedSymbol: string, expect
 export async function fetchYahooReturn(symbol: string, currency: string, now = new Date(), request: typeof fetch = fetch): Promise<{ prices: MarketPrice[]; performance: MarketReturn }> {
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
   url.search = new URLSearchParams({ range: '2y', interval: '1d', events: 'div,splits' }).toString();
-  const response = await request(url, { signal: AbortSignal.timeout(30_000), headers: { Accept: 'application/json' } });
+  const response = await request(url, { signal: AbortSignal.timeout(30_000), headers: { Accept: 'application/json', 'User-Agent': yahooUserAgent } });
+  if (response.status === 429) throw new YahooRateLimitError();
   if (!response.ok) throw new Error(`Yahoo Finance : HTTP ${response.status}.`);
   const prices = parseYahooChart(await response.json(), symbol, currency);
   const performance = calculateReturn(symbol, currency, prices, now);

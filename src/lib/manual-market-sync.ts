@@ -1,6 +1,20 @@
 export type MarketSyncReason = 'rate_limited' | 'source_unavailable' | 'publication_failed';
 export type MarketSyncResult = { succeeded: number; failed: number; total: number; reason?: MarketSyncReason };
 
+// Contrat partagé entre l'adaptateur Yahoo (cron Node et Edge Function Deno), le
+// handler de la fonction et le navigateur : un refus de débit doit être
+// reconnaissable sans relire un message libre.
+export const yahooRateLimitMessage = 'Yahoo Finance : HTTP 429.';
+export class YahooRateLimitError extends Error {
+  constructor() {
+    super(yahooRateLimitMessage);
+    this.name = 'YahooRateLimitError';
+  }
+}
+export function isYahooRateLimit(error: unknown): boolean {
+  return error instanceof YahooRateLimitError || (error instanceof Error && error.message === yahooRateLimitMessage);
+}
+
 // Anciennes versions du bouton : ne plus réafficher leurs erreurs de tentative
 // après rechargement. Les erreurs du cron et les alertes de fraîcheur restent.
 export function isLegacyManualSyncError(error: string | null): boolean {

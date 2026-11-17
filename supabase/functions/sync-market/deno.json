@@ -3,6 +3,7 @@
     "../../../scripts/lib/yahoo": "../../../scripts/lib/yahoo.ts",
     "../../../src/lib/market": "../../../src/lib/market.ts",
     "../../../src/lib/portfolio": "../../../src/lib/portfolio.ts",
-    "../../../src/lib/sync-impact": "../../../src/lib/sync-impact.ts"
+    "../../../src/lib/sync-impact": "../../../src/lib/sync-impact.ts",
+    "../../../src/lib/manual-market-sync": "../../../src/lib/manual-market-sync.ts"
   }
 }

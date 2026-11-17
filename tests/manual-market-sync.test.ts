@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { handleMarketSync } from '../supabase/functions/sync-market/handler';
-import { isLegacyManualSyncError, marketSyncMessage } from '../src/lib/manual-market-sync';
+import { isLegacyManualSyncError, isYahooRateLimit, marketSyncMessage, YahooRateLimitError } from '../src/lib/manual-market-sync';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import SyncFeedback from '../src/components/SyncFeedback';
 
-function setup({ authenticated = true, owner = true, lease = true, failSymbol = '', publicationError = false, sourceRateLimited = false } = {}) {
+function setup({ authenticated = true, owner = true, lease = true, failSymbol = '', publicationError = false, rateLimited = [] as string[] } = {}) {
   const calls: { name: string; args?: Record<string, unknown> }[] = [];
   const fetched: string[] = [];
+  const pauses: number[] = [];
   let serverClients = 0;
   const deps = {
     url: 'https://test.invalid', key: 'publishable-test', serviceKey: 'server-test',
@@ -24,16 +25,18 @@ function setup({ authenticated = true, owner = true, lease = true, failSymbol = 
         },
       };
     },
+    // Pauses neutralisées : le rythme réel est vérifié par les valeurs demandées.
+    wait: async (ms: number) => { pauses.push(ms); },
     instruments: [{ symbol: 'A', currency: 'EUR' }, { symbol: 'B', currency: 'EUR' }],
     fetchReturn: async (symbol: string) => {
       fetched.push(symbol);
-      if (sourceRateLimited) throw new Error('Yahoo Finance : HTTP 429.');
+      if (rateLimited.includes(symbol)) throw new YahooRateLimitError();
       if (symbol === failSymbol) throw new Error('Provider unavailable');
       return { prices: [], performance: { symbol } };
     },
   };
   const request = (method = 'POST', token = true) => new Request('https://test.invalid/functions/v1/sync-market', { method, headers: token ? { Authorization: 'Bearer test-user' } : {} });
-  return { deps, request, calls, fetched, serverClients: () => serverClients };
+  return { deps, request, calls, fetched, pauses, serverClients: () => serverClients };
 }
 test('manuel : OPTIONS et méthodes interdites ne touchent ni base ni source', async () => {
   const s = setup();
@@ -74,14 +77,37 @@ test('manuel : une publication refusée ne doit jamais être comptée comme un s
   const s = setup({ publicationError: true });
   assert.deepEqual(await (await handleMarketSync(s.request(), s.deps)).json(), { succeeded: 0, failed: 2, total: 2, reason: 'publication_failed' });
 });
-test('manuel : premier refus Yahoo 429 interrompt le lot sans nouvelle requête ni faux statut des instruments ignorés', async () => {
-  const s = setup({ sourceRateLimited: true });
+test('manuel : lot séquentiel espacé, jamais en parallèle depuis l’Edge Function', async () => {
+  const s = setup();
+  assert.equal((await handleMarketSync(s.request(), s.deps)).status, 200);
+  assert.deepEqual(s.fetched, ['A', 'B']);
+  assert.deepEqual(s.pauses, [400]);
+  assert.deepEqual(s.calls.map(c => c.name), ['try_start_manual_market_sync', 'publish_manual_market_instrument', 'publish_manual_market_instrument']);
+});
+test('manuel : un refus Yahoo 429 est réessayé une fois, puis interrompt le lot sans faux statut des instruments ignorés', async () => {
+  const s = setup({ rateLimited: ['A', 'B'] });
   const result = await (await handleMarketSync(s.request(), s.deps)).json();
   assert.deepEqual(result, { succeeded: 0, failed: 2, total: 2, reason: 'rate_limited' as const });
-  assert.deepEqual(s.fetched, ['A']);
+  // Sonde + unique réessai, puis plus aucune requête : pas d'acharnement.
+  assert.deepEqual(s.fetched, ['A', 'A']);
+  assert.deepEqual(s.pauses, [1200]);
   assert.equal(s.calls.filter(c => c.name === 'publish_manual_market_instrument').length, 0);
   assert.match(marketSyncMessage(result), /Yahoo Finance limite les requêtes \(HTTP 429\)/);
   assert.match(marketSyncMessage(result), /interrompue/);
+});
+test('manuel : un 429 isolé ne fait pas échouer les instruments déjà synchronisés', async () => {
+  const s = setup({ rateLimited: ['B'] });
+  const result = await (await handleMarketSync(s.request(), s.deps)).json();
+  assert.deepEqual(result, { succeeded: 1, failed: 1, total: 2, reason: 'rate_limited' });
+  assert.deepEqual(s.fetched, ['A', 'B', 'B']);
+  assert.equal(s.calls.filter(c => c.name === 'publish_manual_market_instrument').length, 1);
+});
+test('adaptateur Yahoo : le refus de débit reste reconnaissable sans relire un message libre', () => {
+  assert.equal(isYahooRateLimit(new YahooRateLimitError()), true);
+  assert.equal(isYahooRateLimit(new Error('Yahoo Finance : HTTP 429.')), true);
+  assert.equal(isYahooRateLimit(new Error('Yahoo Finance : HTTP 500.')), false);
+  assert.equal(isYahooRateLimit(new Error('Provider unavailable')), false);
+  assert.equal(isYahooRateLimit(null), false);
 });
 test('manuel : erreur source et refus d’écriture ont des explications distinctes', () => {
   assert.match(marketSyncMessage({ succeeded: 0, failed: 2, total: 2, reason: 'publication_failed' }), /enregistrement/);

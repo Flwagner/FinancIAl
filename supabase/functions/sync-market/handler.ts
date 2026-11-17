@@ -1,5 +1,5 @@
 // Dépendances injectées : les tests n'accèdent jamais à la base de production.
-import type { MarketSyncReason } from '../../../src/lib/manual-market-sync.ts';
+import { isYahooRateLimit, type MarketSyncReason } from '../../../src/lib/manual-market-sync.ts';
 export type MarketSyncClient = {
   auth: { getUser(): Promise<{ data: { user: { id: string } | null }; error: unknown }> };
   from(table: string): { select(columns: string): { eq(column: string, value: string): { maybeSingle(): PromiseLike<{ data: unknown; error: unknown }> } } };
@@ -12,7 +12,18 @@ type Dependencies = {
   createClient: (url: string, key: string, options?: { global?: { headers?: { Authorization: string }; fetch?: typeof fetch }; auth: { persistSession: boolean; autoRefreshToken: boolean } }) => MarketSyncClient;
   instruments: readonly { symbol: string; currency: string }[];
   fetchReturn: (symbol: string, currency: string) => Promise<unknown>;
+  // Remplaçable pour garder les tests instantanés.
+  wait?: (ms: number) => Promise<void>;
 };
+// Séquentiel et espacé : un burst depuis l'IP d'egress partagée des Edge
+// Functions se fait refuser par Yahoo là où le cron Node passe.
+const intervalMs = 400;
+const retryDelayMs = 1_200;
+// Le client Supabase coupe la fonction à 75 s : garder de la marge pour la
+// publication des derniers instruments.
+const attemptBudgetMs = 55_000;
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -50,7 +61,7 @@ export async function handleMarketSync(request: Request, deps: Dependencies): Pr
         return null;
       } catch (error) {
         const reason = stage === 'publication' ? 'publication_failed'
-          : error instanceof Error && /^Yahoo Finance : HTTP 429\.$/.test(error.message) ? 'rate_limited' : 'source_unavailable';
+          : isYahooRateLimit(error) ? 'rate_limited' : 'source_unavailable';
         // Uniquement des codes maîtrisés : ni jeton, ni réponse HTTP brute.
         console.warn(JSON.stringify({ event: 'manual_market_sync_failed', symbol: instrument.symbol, reason }));
         // Une erreur manuelle est transitoire : bilan de la réponse uniquement,
@@ -58,13 +69,29 @@ export async function handleMarketSync(request: Request, deps: Dependencies): Pr
         return reason;
       }
     }
-    // Le premier instrument sert aussi de sonde : aucun contournement ni
-    // nouvelle tentative si Yahoo refuse déjà la première requête.
     if (!deps.instruments.length) throw new Error('Registre vide');
-    const first = await synchronize(deps.instruments[0]);
-    const results = first === 'rate_limited'
-      ? deps.instruments.map(() => first)
-      : [first, ...await Promise.all(deps.instruments.slice(1).map(synchronize))];
+    const wait = deps.wait ?? pause;
+    const startedAt = Date.now();
+    const results: (MarketSyncReason | null)[] = [];
+    let blocked = false;
+    let exhausted = false;
+    for (const [index, instrument] of deps.instruments.entries()) {
+      // Après un refus persistant, insister ne ferait qu'aggraver le blocage :
+      // le reste du lot est compté sans nouvelle requête.
+      if (blocked) { results.push('rate_limited'); continue; }
+      if (exhausted) { results.push('source_unavailable'); continue; }
+      if (index > 0 && Date.now() - startedAt > attemptBudgetMs) { exhausted = true; results.push('source_unavailable'); continue; }
+      if (index > 0) await wait(intervalMs);
+      let reason = await synchronize(instrument);
+      if (reason === 'rate_limited') {
+        // Un seul réessai, réservé au débit : un refus persistant interrompt le lot.
+        console.warn(JSON.stringify({ event: 'manual_market_sync_retry', symbol: instrument.symbol }));
+        await wait(retryDelayMs);
+        reason = await synchronize(instrument);
+      }
+      if (reason === 'rate_limited') blocked = true;
+      results.push(reason);
+    }
     const succeeded = results.filter(result => result === null).length;
     const reason = results.includes('rate_limited') ? 'rate_limited'
       : results.includes('publication_failed') ? 'publication_failed'

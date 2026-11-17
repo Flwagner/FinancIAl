@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateReturn, freezeChangedReadings, groupedInvestments, livePositions, marketInstruments, resolveSymbol, symbolForCode, type MarketPrice, type MarketReturn } from '../src/lib/market';
 import { summarize, validatePortfolio, type Position, type Reading } from '../src/lib/portfolio';
-import { parseYahooChart, fetchYahooReturn } from '../scripts/lib/yahoo';
+import { parseYahooChart, fetchYahooReturn, yahooUserAgent } from '../scripts/lib/yahoo';
 
 const now = new Date('2026-11-12T06:17:00Z');
 const prices: MarketPrice[] = [
@@ -163,6 +163,19 @@ test('adaptateur Yahoo : vérification de la cotation, devise et prix ajustés',
 test('adaptateur Yahoo : HTTP 429 remonte en erreur, sans contournement', async () => {
   const request = (async () => new Response('', { status: 429 })) as typeof fetch;
   await assert.rejects(fetchYahooReturn('JEQP.DE', 'EUR', now, request), /HTTP 429/);
+});
+test('adaptateur Yahoo : agent explicite identique pour le cron Node et l’Edge Function Deno', async () => {
+  let sent: HeadersInit | undefined;
+  const request = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    sent = init?.headers;
+    return new Response('', { status: 429 });
+  }) as typeof fetch;
+  await assert.rejects(fetchYahooReturn('JEQP.DE', 'EUR', now, request), /HTTP 429/);
+  // Yahoo refuse les agents vides, `curl` et `Deno/2.x` : l'agent ne doit donc
+  // dépendre ni du runtime (Deno vs Node) ni d'une signature de navigateur.
+  assert.deepEqual(sent, { Accept: 'application/json', 'User-Agent': yahooUserAgent });
+  assert.match(yahooUserAgent, /^[A-Za-z][\w.-]*\/\d/);
+  assert.doesNotMatch(yahooUserAgent, /Deno|node|Mozilla|curl/i);
 });
 test('validation : seuls les relevés modifiés figent la dernière valeur et sa date', () => {
   const market = { returns: [performance], statuses: [] };
