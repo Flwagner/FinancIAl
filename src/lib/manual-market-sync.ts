@@ -4,7 +4,7 @@ export type MarketSyncResult = { succeeded: number; failed: number; total: numbe
 // Contrat partagé entre l'adaptateur Yahoo (cron Node et Edge Function Deno), le
 // handler de la fonction et le navigateur : un refus de débit doit être
 // reconnaissable sans relire un message libre.
-export const yahooRateLimitMessage = 'Yahoo Finance : HTTP 429.';
+const yahooRateLimitMessage = 'Yahoo Finance : HTTP 429.';
 export class YahooRateLimitError extends Error {
   constructor() {
     super(yahooRateLimitMessage);

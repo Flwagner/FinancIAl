@@ -30,7 +30,7 @@ export type MarketReturn = {
   method: 'adjusted_close_365d';
   fetched_at: string;
 };
-export type MarketStatus = { symbol: string; last_attempt_at: string; error: string | null };
+type MarketStatus = { symbol: string; last_attempt_at: string; error: string | null };
 export type MarketData = { returns: MarketReturn[]; statuses: MarketStatus[]; impact?: SyncImpact | null; error?: string; loading?: boolean };
 
 export function symbolForCode(code: string): string | undefined {

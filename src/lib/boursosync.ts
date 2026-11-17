@@ -2,9 +2,9 @@ import type { Position } from './portfolio';
 import { marketInstruments, symbolForCode } from './market';
 import { matchSources } from '../../extension/shared/matching.mjs';
 
-export type BoursoMapping = { account: string; asset: string; positionId: string; label: string };
+type BoursoMapping = { account: string; asset: string; positionId: string; label: string };
 export type BoursoSource = { account: string; asset: string; envelope: string; label: string; balanceType?: 'livret-a' | 'assurance-vie' };
-export type BoursoSuggestion = { source: BoursoSource; mapping: BoursoMapping; reason: string };
+type BoursoSuggestion = { source: BoursoSource; mapping: BoursoMapping; reason: string };
 
 export function parseBoursoDiscovery(value: unknown): BoursoSource[] {
   const data = value as { kind?: unknown; version?: unknown; sources?: unknown } | null;
@@ -36,7 +36,7 @@ export function suggestBoursoMappings(sources: BoursoSource[], positions: Positi
   return matchSources(sources, positions, existing, aliases);
 }
 
-export type BoursoStatus = {
+type BoursoStatus = {
   active: boolean; mappings: BoursoMapping[]; expiresAt?: string;
   lastSyncedAt?: string; lastCapturedAt?: string; lastCount?: number;
 };

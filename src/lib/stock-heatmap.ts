@@ -1,7 +1,7 @@
 import { heatmapLayout, type Tile } from './stock-simulation';
 
 type Item = { id: string; amount: number };
-export type ReadableHeatmap = { tiles: Tile[]; width: number; height: number; proportional: boolean };
+type ReadableHeatmap = { tiles: Tile[]; width: number; height: number; proportional: boolean };
 
 export function readableHeatmap(items: Item[], width: number): ReadableHeatmap {
   const positive = items.filter(i => i.amount > 0).sort((a, b) => b.amount - a.amount);

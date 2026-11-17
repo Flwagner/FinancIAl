@@ -22,7 +22,7 @@ export function referenceFor(p: Position) {
   return i && 'referenceSymbol' in i ? i.referenceSymbol : i?.symbol;
 }
 const day = 86400000;
-export const cgiSimulationRate = 30;
+const cgiSimulationRate = 30;
 export const cgiSimulationLabel = 'CGI · Simulation à 30 % par an — aucun historique disponible';
 export function usesCgiSimulation(position: Position, history: History) {
   const symbol = referenceFor(position);

@@ -28,7 +28,7 @@ Une connexion Internet reste nécessaire pour consulter et modifier le portefeui
 ## Configurer Supabase (étape manuelle)
 
 1. Créer un projet Supabase.
-2. Exécuter `supabase/schema.sql` dans le SQL Editor (une fois).
+2. Exécuter `supabase/schema.sql` dans le SQL Editor (une fois), puis appliquer **dans l’ordre** toutes les migrations de `supabase/migrations/` (`001_market.sql`, puis les fichiers horodatés). Les sections ci-dessous expliquent chacune d’elles.
 3. Créer ton utilisateur dans Authentication → Users avec e-mail et mot de passe. Désactiver « Allow new users to sign up » dans les paramètres Auth.
 4. Autoriser uniquement son UUID depuis le SQL Editor :
 
@@ -107,7 +107,7 @@ Appliquer `supabase/migrations/20261117091351_manual_market_sync.sql`, puis dép
 
 Le bouton appelle directement Supabase. La session et les droits du propriétaire sont vérifiés côté serveur ; un verrou atomique limite les lancements manuels à un toutes les deux minutes, tous appareils confondus. Le synchroniseur et le cron Supabase partagent l’adaptateur Yahoo, le calcul et les validations SQL. Les dernières valeurs valides sont conservées en cas d’échec, avec un bilan partiel. Les chiffres et les historiques boursiers sont relus après l’opération. Le lancement manuel n’envoie pas de notification Push.
 
-Les instruments sont interrogés **un par un**, avec une pause de 400 ms : un burst depuis l’IP d’egress partagée des Edge Functions se fait refuser par Yahoo là où le cron Node passe. L’adaptateur envoie aussi un agent explicite et neutre (`FinanceSync/1.0`) : Yahoo répond **HTTP 429** aux agents vides, à `curl` et à `Deno/2.x` (le runtime des Edge Functions), alors qu’il accepte `node`. Sans cet agent, l’appel manuel échouait systématiquement en 429, jamais le cron GitHub Actions.
+Les instruments sont interrogés **un par un**, avec une pause de 400 ms : un burst depuis l’IP d’egress partagée des Edge Functions se fait refuser par Yahoo. L’adaptateur envoie aussi un agent explicite et neutre (`FinanceSync/1.0`) : Yahoo répond **HTTP 429** aux agents vides, à `curl` et à `Deno/2.x` (le runtime des Edge Functions), alors qu’il accepte `node`. Sans cet agent, les appels échouaient systématiquement en 429.
 
 Un refus Yahoo **HTTP 429** reste possible depuis Supabase : le bouton ne contourne pas les quotas du fournisseur. Chaque refus de débit est réessayé **une seule fois** après 1,2 s, sans parallélisme ; un refus persistant interrompt le reste du lot, compté `rate_limited` sans nouvelle requête. Le bilan reste partiel si des instruments ont déjà abouti. Les échecs manuels ne sont pas enregistrés dans les statuts de marché : le bilan reste en mémoire et disparaît au rafraîchissement. Les erreurs persistées par les anciennes versions du bouton sont ignorées à la lecture, sans masquer celles du cron ni les alertes de cours anciens. Le bilan d’échec utilise l’encadré rouge à puce commun aux alertes. Le symbole vert tourne pendant l’opération, sauf préférence système pour réduire les animations. Les logs serveur ne contiennent que les symboles et codes d’erreur maîtrisés.
 
@@ -115,7 +115,7 @@ Tests sans données réelles : `npm test`, `npm run test:market-sync:db` (Postgr
 
 ### Source et méthode
 
-Le fournisseur initial est **Yahoo Finance**, via son endpoint chart non officiel. L'adaptateur est isolé dans `scripts/lib/yahoo.ts` pour permettre un remplacement par une API contractuelle. Yahoo peut changer son accès ou appliquer des quotas : ce service n'est pas garanti. Vérifier ses conditions pour l'usage personnel.
+Le fournisseur initial est **Yahoo Finance**, via son endpoint chart non officiel. L'adaptateur est isolé (`scripts/lib/yahoo.ts` pour le script local, une copie dans les Edge Functions) pour permettre un remplacement par une API contractuelle. Yahoo peut changer son accès ou appliquer des quotas : ce service n'est pas garanti. Vérifier ses conditions pour l'usage personnel.
 
 Les références sont rattachées aux ISIN BoursoBank (vérification du 13 novembre 2026). La saisie accepte un ISIN, le symbole Yahoo ou le code de cotation du registre :
 
@@ -148,7 +148,7 @@ La synchronisation récupère deux ans de clôtures et utilise `adjusted_close`,
 
 ### Tables et sécurité
 
-Exécuter `supabase/migrations/001_market.sql` une fois, après `supabase/schema.sql` :
+`supabase/migrations/001_market.sql` crée les tables de marché, à appliquer après `supabase/schema.sql` :
 
 | Table | Rôle |
 |---|---|
@@ -156,9 +156,9 @@ Exécuter `supabase/migrations/001_market.sql` une fois, après `supabase/schema
 | `market_prices` | Clôtures brutes et ajustées par date, source Yahoo |
 | `market_returns` | Dernière performance valide, dates et prix de référence, méthode et date de récupération |
 | `market_sync_status` | Dernière tentative et erreur éventuelle |
-| `market_sync_secrets` | Empreinte du jeton de synchronisation, inaccessible aux clients |
+| `market_sync_secrets` | Empreinte du jeton du script local `market:sync`, inaccessible aux clients |
 
-Le navigateur authentifié propriétaire peut lire les données de marché mais pas les écrire. Le script utilise la RPC `sync_market_instrument` avec un jeton spécifique : elle ne peut modifier **que les données de marché**, jamais les comptes ni le document portefeuille. Aucune clé `service_role` nécessaire. Les prix sont contrôlés et la performance est recalculée en SQL.
+Le navigateur authentifié propriétaire peut lire les données de marché mais pas les écrire. Les écritures de marché passent par les Edge Functions (bouton manuel et cron). Le script local optionnel `market:sync` utilise la RPC `sync_market_instrument` avec un jeton spécifique : elle ne peut modifier **que les données de marché**, jamais les comptes ni le document portefeuille. Aucune clé `service_role` nécessaire. Les prix sont contrôlés et la performance est recalculée en SQL.
 
 Les fonctions privilégiées sont isolées dans le schéma non exposé `financial_private`. La fonction REST publique de synchronisation est un wrapper `SECURITY INVOKER` ; l'implémentation privée vérifie le jeton. Les privilèges implicites de Supabase sont révoqués avant les autorisations explicites, notamment `TRUNCATE`, et le trigger système `rls_auto_enable` n'est pas exécutable depuis l'API. Les deux tables d'administration (`portfolio_owner`, `market_sync_secrets`) n'ont volontairement aucune politique client : accès refusé par défaut, même après connexion.
 
@@ -166,19 +166,16 @@ Les fonctions privilégiées sont isolées dans le schéma non exposé `financia
 
 La migration `20261117150121_scheduled_market_sync.sql` installe `pg_cron`, `pg_net`,
 un jeton dédié dans Vault et un job **initialement inactif**. L’Edge Function
-`supabase/functions/daily-market-sync/index.ts` remplace le traitement Node quotidien :
+`supabase/functions/daily-market-sync/index.ts` assure le traitement quotidien :
 cours, comparatif et Web Push. Le bouton manuel conserve son endpoint et son authentification.
 
 Le traitement quotidien est hébergé dans Supabase, sans runner GitHub ni ordinateur
-allumé. L’ancien workflow `sync-market.yml` est supprimé ; GitHub Actions conserve
-uniquement les vérifications et le déploiement de la PWA.
+allumé. GitHub Actions ne sert qu’aux vérifications et au déploiement de la PWA.
 
-**Rotation VAPID du 17 novembre 2026 :** l’ancienne clé privée étant perdue
-(GitHub ne permet pas de relire un secret), une nouvelle paire a été installée dans
-Supabase et GitHub. Une copie privée est conservée dans `.env.market`, ignoré par Git.
-Après mise à jour de la PWA, **désactiver puis réactiver les notifications sur chaque
-appareil** pour remplacer les abonnements liés à l’ancienne clé. Les erreurs Push
-pendant cette transition ne remettent pas en cause la synchronisation des cours.
+**Rotation des clés VAPID :** après un changement de paire, désactiver puis
+réactiver les notifications sur chaque appareil pour remplacer les abonnements liés
+à l’ancienne clé. Les erreurs Push pendant cette transition ne remettent pas en
+cause la synchronisation des cours. Ne jamais committer la clé privée.
 
 Installation sur un nouveau projet :
 
@@ -205,8 +202,7 @@ Installation sur un nouveau projet :
    La réponse HTTP est aussi consultable dans `net._http_response` via l’identifiant
    retourné par le déclenchement.
 6. Après vérification, activer `daily-market-sync` dans Integrations → Cron.
-   Ne pas réactiver un ancien workflow GitHub de synchronisation en parallèle.
-   Le workflow `deploy.yml` conserve les tests et le déploiement de la PWA.
+   Le workflow `deploy.yml` ne fait que tester et déployer la PWA.
 
 Le job utilise `30 7,8 * * *` en UTC et ne déclenche l’appel qu’à **09:30 à
 Paris**, été comme hiver, week-ends compris. Un verrou atomique de cinq minutes
@@ -228,13 +224,13 @@ Le dashboard lit les dernières performances depuis Supabase, au chargement puis
 
 Les taux automatiques du dashboard sont superposés à l'estimation courante, **sans réécriture des anciens relevés**. Lorsqu'un relevé nouveau ou explicitement modifié est enregistré, son taux connu et sa date de marché sont figés dans le relevé. Une modification des objectifs ne réactualise pas les anciens relevés. Une panne conserve la dernière performance valide et affiche un avertissement ; avant la première synchronisation, le taux du relevé sert de repli.
 
-### Tester sans aucune écriture
+### Script local (optionnel)
 
 ```bash
 npm run market:check
 ```
 
-Pour une écriture locale, créer un fichier privé `.env.market` contenant `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` et `MARKET_SYNC_TOKEN`, puis exécuter `node --env-file=.env.market --import tsx scripts/sync-market.ts`. Les fichiers `.env*` sont ignorés par Git. Les journaux ne contiennent que des cotations publiques et performances, pas les positions ou secrets.
+`market:check` interroge Yahoo en lecture seule, sans rien écrire. Le traitement de production est celui du cron Supabase ; le script `market:sync` reste un outil local de secours. Pour une écriture locale, créer un fichier privé `.env.market` contenant `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` et `MARKET_SYNC_TOKEN`, puis exécuter `npm run market:sync`. Les fichiers `.env*` sont ignorés par Git. Les journaux ne contiennent que des cotations publiques et performances, pas les positions ou secrets.
 
 ## Variation quotidienne et notifications Web Push
 
@@ -248,11 +244,11 @@ La migration `*_reweight_daily_comparison.sql` conserve les taux de marché par 
 
 ### Configuration (une fois)
 
-1. Exécuter `supabase/migrations/20261113085126_push_sync_impact.sql`, puis `supabase/migrations/20261113094822_daily_return_reference.sql`, puis `supabase/migrations/20261114120000_latest_actual_reading.sql` dans le SQL Editor, après les schémas précédents. La dernière aligne la base de comparaison du job sur le dernier relevé **réel** détaillé, comme la carte : une projection future ne doit ni fournir le taux comparé, ni déclencher l'avertissement de placements modifiés. Elles ajoutent les abonnements, le comparatif quotidien et la RPC `push_sync`. Les clients ne peuvent gérer que leurs abonnements et lire leur comparatif ; seul le jeton du job peut écrire un comparatif. Le schéma `financial_private` doit rester **non exposé** dans les paramètres Data API. Lors de la mise à niveau, l’ancienne dernière mesure est conservée pour amorcer la prochaine journée ; l’ancien delta par job n’est pas présenté comme une variation quotidienne. Déployer le nouveau script avec cette migration : l’ancien script ne demande pas d’envoi quotidien.
+1. Exécuter `supabase/migrations/20261113085126_push_sync_impact.sql`, puis `supabase/migrations/20261113094822_daily_return_reference.sql`, puis `supabase/migrations/20261114120000_latest_actual_reading.sql` dans le SQL Editor, après les schémas précédents. La dernière aligne la base de comparaison du job sur le dernier relevé **réel** détaillé, comme la carte : une projection future ne doit ni fournir le taux comparé, ni déclencher l'avertissement de placements modifiés. Elles ajoutent les abonnements, le comparatif quotidien et la RPC `push_sync`. Les clients ne peuvent gérer que leurs abonnements et lire leur comparatif ; seul le jeton du job peut écrire un comparatif. Le schéma `financial_private` doit rester **non exposé** dans les paramètres Data API. Lors de la mise à niveau, l’ancienne dernière mesure est conservée pour amorcer la prochaine journée ; l’ancien delta par job n’est pas présenté comme une variation quotidienne.
 2. Le cron Supabase utilise une RPC réservée à l’Edge Function serveur ; il n’a
-   pas besoin de `PUSH_SYNC_TOKEN`. **Uniquement pour conserver les exécutions
-   locales du script Node**, générer un jeton distinct du jeton marché, le garder
-   dans `.env.market` comme `PUSH_SYNC_TOKEN`, puis enregistrer son empreinte :
+   besoin d’aucun `PUSH_SYNC_TOKEN`. Ce jeton n’est nécessaire que pour conserver
+   des exécutions locales du script Node : le générer distinct du jeton marché, le
+   garder dans `.env.market` comme `PUSH_SYNC_TOKEN`, puis enregistrer son empreinte :
 
 ```sql
 insert into financial_private.push_sync_secrets(singleton, token_sha256)
@@ -260,10 +256,9 @@ values(true, encode(sha256(convert_to('TON_NOUVEAU_JETON', 'UTF8')), 'hex'))
 on conflict(singleton) do update set token_sha256 = excluded.token_sha256;
 ```
 
-Le **comparatif dans la carte fonctionne sans Web Push** via le script local.
-Sans `PUSH_SYNC_TOKEN`, ce script synchronise seulement le marché.
 Le traitement quotidien Supabase exige sa configuration VAPID avant toute
-synchronisation pour ne pas terminer silencieusement sans Push.
+synchronisation pour ne pas terminer silencieusement sans Push. Sans
+`PUSH_SYNC_TOKEN`, le script local synchronise seulement le marché.
 `market:check` ne lit ni n’écrit les données privées.
 
 3. Pour une première installation, générer une paire VAPID avec
@@ -333,6 +328,6 @@ npm run build
 
 `out/` contient le site déployable. Pour vérifier localement le sous-chemin GitHub Pages : `NEXT_PUBLIC_BASE_PATH=/FinancIAl npm run build`.
 
-Le schéma SQL et les politiques RLS doivent également être testés sur ton projet réel : connecté comme propriétaire, créer/lire/modifier un relevé ; déconnecté ou avec un autre compte, aucune lecture/écriture ne doit être autorisée. L’import initial et le déploiement réel nécessitent ta configuration Supabase/GitHub et ne sont pas exécutés automatiquement depuis ce dépôt.
+Le schéma SQL et les politiques RLS doivent également être testés sur ton projet réel : connecté comme propriétaire, créer/lire/modifier un relevé ; déconnecté ou avec un autre compte, aucune lecture/écriture ne doit être autorisée. Le déploiement réel nécessite ta configuration Supabase/GitHub et n’est pas exécuté automatiquement depuis ce dépôt.
 
 Tests SQL reproductibles dans un PostgreSQL 17 jetable uniquement : exécuter successivement `tests/sql/bootstrap.sql`, `supabase/schema.sql`, `supabase/migrations/001_market.sql`, puis `tests/sql/market-security.sql`. Après les migrations `20261114094306_jeqp_xetra_eur.sql` et `20261114095504_remove_jeqp_london.sql`, exécuter aussi `tests/sql/jeqp-xetra.sql` (bascule, suppression des cours résiduels, réécriture des relevés, ISIN unique, idempotence). Le bootstrap simule les rôles Supabase ; **ne jamais l'exécuter sur le projet réel**. Ces tests couvrent le jeton invalide, les droits limités, le propriétaire/non-propriétaire, le recalcul serveur et la conservation du dernier résultat après échec.

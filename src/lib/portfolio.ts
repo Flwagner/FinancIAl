@@ -1,8 +1,8 @@
 import { isKnownMarketCode } from './market';
 export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market'; group?: string; rateAsOf?: string };
 export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number>; kind?: 'current' };
-export type MonthlySnapshot = { month: string; capturedAt: string; total: number };
-export type Goals = { capital: number; annual: number; monthly: number };
+type MonthlySnapshot = { month: string; capturedAt: string; total: number };
+type Goals = { capital: number; annual: number; monthly: number };
 export type Portfolio = { readings: Reading[]; goals: Goals; updatedAt?: string; monthlySnapshots?: MonthlySnapshot[] };
 export function normalizeGoals(goals: Goals): Goals {
   return { ...goals, monthly: goals.annual / 12 };

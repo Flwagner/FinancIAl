@@ -13,7 +13,7 @@ Extension Chrome Manifest V3, JavaScript natif sans build. Lecture automatique �
 
 Le jeton dédié expire après 180 jours. Une nouvelle connexion le renouvelle et invalide l’ancien. **Déconnecter l’extension** révoque cet accès. Aucun panneau Boursosync n’est présent dans le site.
 
-Aucun export/import de fichiers n’est nécessaire. Une ancienne capacité locale peut être reprise lors de la mise à jour. `project.json` est ignoré par Git : le préparer avant de distribuer le dossier de l’extension.
+Aucun export/import de fichiers n’est nécessaire. `project.json` est ignoré par Git : le préparer avant de distribuer le dossier de l’extension.
 
 L’enveloppe et la classe d’actifs sont distinctes : Obligations, Or et Bitcoin peuvent être détenus en CTO sans devenir des Actions. Pour les titres, le rapprochement exige l’ISIN exact et la bonne enveloppe, jamais un nom, une classe d’actifs ou un proxy (bitcoin spot, autre produit or). Aucun repli de CTO vers « Direct » ; une erreur d’enveloppe doit être corrigée dans les données. Les doublons et destinations déjà occupées restent protégés.
 
