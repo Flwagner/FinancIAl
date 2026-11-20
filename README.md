@@ -284,7 +284,10 @@ Pour le développement, mettre seulement la clé publique dans `.env.local`. Les
    `20261116093305_notify_unchanged_returns.sql` pour activer ce comportement.
    Les notifications système ne permettent pas de forcer la couleur du texte :
    pastilles et flèches remplacent le vert/rouge de la carte. Au clic, la PWA est
-   ouverte au bon sous-chemin GitHub Pages.
+   ouverte au bon sous-chemin GitHub Pages : la fenêtre déjà ouverte revient au
+   premier plan, et si le navigateur refuse ce retour (certaines versions
+   d’Android), l’application est rouverte dans une nouvelle fenêtre au lieu de ne
+   rien faire.
 
 ### Comportement et confidentialité
 

@@ -11,11 +11,13 @@ function worker(scope = 'https://example.org/FinancIAl/') {
   const offline = new Response('offline');
   let online = true;
   let claimed = false;
+  let skipped = false;
   runInNewContext(readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8'), {
     URL, Request, Response,
     self: {
       registration: { scope },
       clients: { claim: async () => { claimed = true; } },
+      skipWaiting: async () => { skipped = true; },
       addEventListener: (name: string, listener: (event: any) => void) => { listeners[name] = listener; },
     },
     caches: {
@@ -28,7 +30,7 @@ function worker(scope = 'https://example.org/FinancIAl/') {
     },
     fetch: async () => { if (!online) throw new TypeError('offline'); return new Response('network'); },
   });
-  return { listeners, cached, deleted, offline, disconnect: () => { online = false; }, claimed: () => claimed };
+  return { listeners, cached, deleted, offline, disconnect: () => { online = false; }, claimed: () => claimed, skipped: () => skipped };
 }
 
 test('manifeste installable à la racine et sur un sous-chemin GitHub Pages', () => {
@@ -57,6 +59,9 @@ test('installation : seule la page publique hors connexion est mise en cache', a
     state.listeners.install({ waitUntil: (promise: Promise<unknown>) => { pending = promise; } });
     await pending;
     assert.deepEqual(state.cached, [`${scope}offline.html`]);
+    // Le nouveau worker prend la main sans attendre la fermeture des fenêtres,
+    // sinon un ancien gestionnaire de clic peut rester actif pendant des jours.
+    assert.equal(state.skipped(), true);
   }
 });
 

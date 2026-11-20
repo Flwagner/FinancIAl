@@ -3,7 +3,13 @@ const CACHE = 'financial-offline-v1';
 const offlineUrl = new URL('offline.html', self.registration.scope).href;
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.add(new Request(offlineUrl, { cache: 'reload' }))));
+  // Activate immediately: a worker still waiting keeps the previous script
+  // (and therefore the previous click handling) until every window is closed.
+  event.waitUntil((async () => {
+    await self.skipWaiting();
+    const cache = await caches.open(CACHE);
+    await cache.add(new Request(offlineUrl, { cache: 'reload' }));
+  })());
 });
 
 self.addEventListener('activate', event => {
@@ -68,13 +74,29 @@ self.addEventListener('push', event => {
   })());
 });
 
+function inScope(value) {
+  return typeof value === 'string' && value.startsWith(self.registration.scope);
+}
+
+// The notification is shown for the app root, so a click must bring the app
+// forward. Opening a window is the only safe fallback: some Android builds
+// reject focus() on a background PWA, and a rejection used to leave the click
+// without any visible effect.
+async function openApp(notification) {
+  const url = inScope(notification?.data?.url) ? notification.data.url : self.registration.scope;
+  let windows = [];
+  try { windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }); }
+  catch { /* Continue: a new window is still worth trying. */ }
+  const existing = windows.find(client => inScope(client.url));
+  if (existing) {
+    try { await existing.focus(); return; }
+    catch { /* Fall back to opening the app. */ }
+  }
+  try { await self.clients.openWindow(url); }
+  catch { /* No other way to bring the app forward. */ }
+}
+
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  event.waitUntil((async () => {
-    const url = self.registration.scope;
-    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const existing = windows.find(client => client.url.startsWith(url));
-    if (existing) { await existing.focus(); return; }
-    await self.clients.openWindow(url);
-  })());
+  event.waitUntil(openApp(event.notification));
 });
