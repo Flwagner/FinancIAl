@@ -7,8 +7,12 @@
 .sync-market-button:hover:not(:disabled){border-color:var(--lime);color:var(--lime)}
 .sync-market-feedback{text-align:left}
 .sync-market-icon{display:inline-block}
+.sync-market-label-short{display:none}
+.date-chip-short{display:none}
 .sync-market-button[aria-busy="true"] .sync-market-icon{animation:market-sync-spin 1s linear infinite}
 @keyframes market-sync-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.sync-market-button[aria-busy="true"] .sync-market-icon{animation:none}}
 @media(max-width:1000px){.portfolio-heading{flex-wrap:wrap}.portfolio-status{justify-content:flex-start}}
-@media(max-width:640px){.portfolio-heading{align-items:flex-start;flex-direction:column}.portfolio-status{gap:8px}.portfolio-status .date-chip,.sync-market-button{font-size:10px;padding:9px 11px}}
+@media(max-width:640px){.portfolio-heading{align-items:flex-start;flex-direction:column}.portfolio-heading-actions{flex-wrap:nowrap;justify-content:flex-start;gap:8px;width:100%;max-width:100%;overflow-x:auto;scrollbar-width:none}.portfolio-heading-actions::-webkit-scrollbar{display:none}.portfolio-heading-actions>*{flex:0 0 auto;white-space:nowrap}.portfolio-status{display:contents}.portfolio-status .date-chip,.sync-market-button{font-size:10px;padding:9px 11px}.sync-market-label-full{display:none}.sync-market-label-short{display:inline}.date-chip-label{display:none}.date-chip-short{display:inline}}
+@media(max-width:380px){.portfolio-heading-actions{gap:4px}.portfolio-status .date-chip,.sync-market-button{font-size:10px;padding:7px 7px}.portfolio-heading-actions>a.sync-market-button span[aria-hidden="true"]{display:none}}
+@media(max-width:340px){.portfolio-status .date-chip,.sync-market-button{padding:6px 6px}}
