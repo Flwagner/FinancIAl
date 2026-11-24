@@ -334,3 +334,37 @@ npm run build
 Le schéma SQL et les politiques RLS doivent également être testés sur ton projet réel : connecté comme propriétaire, créer/lire/modifier un relevé ; déconnecté ou avec un autre compte, aucune lecture/écriture ne doit être autorisée. Le déploiement réel nécessite ta configuration Supabase/GitHub et n’est pas exécuté automatiquement depuis ce dépôt.
 
 Tests SQL reproductibles dans un PostgreSQL 17 jetable uniquement : exécuter successivement `tests/sql/bootstrap.sql`, `supabase/schema.sql`, `supabase/migrations/001_market.sql`, puis `tests/sql/market-security.sql`. Après les migrations `20261114094306_jeqp_xetra_eur.sql` et `20261114095504_remove_jeqp_london.sql`, exécuter aussi `tests/sql/jeqp-xetra.sql` (bascule, suppression des cours résiduels, réécriture des relevés, ISIN unique, idempotence). Le bootstrap simule les rôles Supabase ; **ne jamais l'exécuter sur le projet réel**. Ces tests couvrent le jeton invalide, les droits limités, le propriétaire/non-propriétaire, le recalcul serveur et la conservation du dernier résultat après échec.
+## Portefeuille SCPI et import Louve Invest
+
+L’onglet **Portefeuille SCPI** partage les positions de « Saisie des données » et
+de la vue d’ensemble. Il distingue prix de souscription, coût investi et valeur
+de retrait indicative. Les revenus affichés sont théoriques, calculés avec les
+taux N−1 en priorité (ou le taux de la fiche générale Louve en repli, signalé sans
+année supposée), et non les loyers réellement encaissés. Les libellés FinancIAl
+existants sont conservés ; l’identifiant Louve sert d’association pour éviter les doublons.
+
+Pour actualiser le portefeuille, demander à OpenCode **« Utilise le skill
+import-scpi »**. Le skill versionné dans `.agents/skills/import-scpi/SKILL.md`
+collecte le portefeuille, toutes les transactions (externes incluses) et les
+fiches SCPI avec le MCP Louve. Il prépare un fichier validé, puis un aperçu dans
+l’application. L’écriture nécessite confirmation ; il ne modifie jamais Louve.
+La configuration du MCP est dans `opencode.json` ; après clonage, autoriser Louve
+dans `/mcps`. Les jetons OAuth ne font pas partie du dépôt.
+
+L’application stocke les instantanés, fiches et transactions dans la section
+`scpi` du document JSONB `portfolios.data` : les RLS et la sauvegarde atomique
+`save_portfolio_checked` existantes s’appliquent, sans nouvelle migration ni clé
+de service. Les autres actifs et les relevés passés ne sont pas remplacés.
+Une seule colonne **Source** après Montant et Taux annuel pilote les deux valeurs
+SCPI : **Louve Invest** ou **Manuel**. Le mode manuel conserve montant et taux aux
+imports suivants ; repasser sur Louve rétablit les deux valeurs du dernier import.
+Les anciennes sources mixtes sont traitées comme manuelles, sans perte de valeur.
+
+La courbe unique verte remonte aux premières transactions disponibles. Elle utilise
+les valorisations des relevés SCPI détaillés et instantanés enregistrés quand elles
+existent, sinon les versements nets historiques (achats moins ventes exécutées,
+opérations externes incluses). L’infobulle affiche uniquement la date et le montant.
+Les opérations en cours ne sont pas anticipées, aucune valorisation historique
+n’est inventée. Les répartitions sans date publiée le signalent ; les
+expositions absentes restent « Non renseignée ». Actualisation manuelle conseillée
+tous les six mois, ou après une opération importante.

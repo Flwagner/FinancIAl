@@ -24,7 +24,8 @@ test('écran allégé : retrait du bouton, du bloc couverture et des explication
   assert.match(html, /Montant détenu/);
   assert.match(html, /Placements/);
   assert.equal((html.match(/class="stock-sort-button"/g) || []).length, 6);
-  assert.equal((html.match(/scope="col" aria-sort="none"/g) || []).length, 6);
+  assert.equal((html.match(/scope="col" aria-sort="none"/g) || []).length, 5);
+  assert.match(html, /scope="col" aria-sort="descending"><button[^>]*aria-label="Trier par Performance · 1 an"/);
   assert.match(html, /aria-label="Trier par Montant"/);
 });
 

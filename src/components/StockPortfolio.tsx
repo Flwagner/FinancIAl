@@ -16,7 +16,7 @@ export default function StockPortfolio({ data, market }: { data: Portfolio; mark
   const [envelope, setEnvelope] = useState('Tous');
   const [period, setPeriod] = useState<Period>('1 an');
   const [selected, setSelected] = useState<string | null>(null);
-  const [sort, setSort] = useState<StockSort | null>(null);
+  const [sort, setSort] = useState<StockSort | null>({ key: 'rate', direction: 'descending' });
   const [history, setHistory] = useState<History>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -72,7 +72,7 @@ export default function StockPortfolio({ data, market }: { data: Portfolio; mark
       <p className="stock-disclaimer">Moyenne des performances cumulées pondérée par les montants actuels, sans rééquilibrage. Ne représente pas vos gains réels. {period === '1 an' && 'Chaque titre coté utilise sa référence à 365 jours depuis sa dernière clôture.'}</p>
     </section>
     <StockHeatmap lines={groupedLines} total={result.total} period={period} onSelect={openDetail} />
-    <section className="panel"><h2>Tes lignes · {envelope}</h2><div className="table-scroll"><table className="stock-table"><thead><tr>{columns.map(([key, label]) => {
+    <section className="panel"><h2>Détails actions · {envelope}</h2><div className="table-scroll"><table className="stock-table"><thead><tr>{columns.map(([key, label]) => {
       const direction = sort?.key === key ? sort.direction : 'none';
       const Icon = direction === 'ascending' ? ArrowUp : direction === 'descending' ? ArrowDown : ArrowUpDown;
       return <th key={key} scope="col" aria-sort={direction}><button type="button" className="stock-sort-button" aria-label={`Trier par ${label}`} title={`Trier par ${label} · ordre ${nextStockSort(sort, key).direction === 'ascending' ? 'croissant' : 'décroissant'}`} onClick={() => setSort(current => nextStockSort(current, key))}>{label}<Icon size={13} aria-hidden="true" /></button></th>;

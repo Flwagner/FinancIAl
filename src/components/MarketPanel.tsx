@@ -9,11 +9,13 @@ import Editor from './Editor';
 import SidebarGoals from './SidebarGoals';
 import PushNotifications from './PushNotifications';
 import StockPortfolio from './StockPortfolio';
+import ScpiPortfolio from './ScpiPortfolio';
 import PortfolioStatus from './PortfolioStatus';
 import SyncFeedback from './SyncFeedback';
 import { marketSyncMessage } from '@/lib/manual-market-sync';
+import { scpiPositions } from '@/lib/scpi';
 
-export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor' | 'stocks'; sidebar: HTMLDivElement | null }) {
+export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Portfolio; onSave: (data: Portfolio) => Promise<void>; tab: 'dashboard' | 'editor' | 'stocks' | 'scpi'; sidebar: HTMLDivElement | null }) {
   const [market, setMarket] = useState<MarketData>({ returns: [], statuses: [], loading: true });
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -57,13 +59,18 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
   }
   return <>
     <div className="page-heading portfolio-heading">
-      <h1>{tab === 'dashboard' ? 'Mon patrimoine' : tab === 'stocks' ? 'Portefeuille boursier' : 'Mon portefeuille'}<span>.</span></h1>
-      <PortfolioStatus updatedAt={data.updatedAt} syncing={syncing} onSync={() => void synchronize()} />
+      <h1>{tab === 'dashboard' ? 'Mon patrimoine' : tab === 'stocks' ? 'Portefeuille boursier' : tab === 'scpi' ? 'Portefeuille SCPI' : 'Mon portefeuille'}<span>.</span></h1>
+      <div className="portfolio-heading-actions">
+        {tab === 'scpi' && <a className="sync-market-button" href="https://app.louveinvest.com/dashboard" target="_blank" rel="noopener noreferrer">Louve Invest <span aria-hidden="true">↗</span></a>}
+        {tab === 'stocks' && <a className="sync-market-button" href="https://www.google.com/finance/portfolio/4f945656-361f-46ac-abdc-72abd01ed02c?tab=insights&window=1M" target="_blank" rel="noopener noreferrer">Google Finance <span aria-hidden="true">↗</span></a>}
+        <PortfolioStatus updatedAt={data.updatedAt} syncing={syncing} onSync={() => void synchronize()} hideSync={tab === 'scpi'} />
+      </div>
     </div>
     <SyncFeedback message={syncMessage} error={syncError} />
+    {scpiPositions(data).some(p => p.scpiRateUnavailable) && <p className="notice" role="status">Certains taux SCPI sont indisponibles : les estimations de revenus et de rendement sont incomplètes.</p>}
     {sidebar && createPortal(<div className={tab === 'editor' ? undefined : 'goals-desktop-only'}><SidebarGoals data={data} market={market} onSave={async next => { await save(next); }} /></div>, sidebar)}
     {tab === 'editor' && <div className="market-toolbar"><PushNotifications /></div>}
-    {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : tab === 'stocks' ? <StockPortfolio data={data} market={market} /> : <Editor data={data} onSave={save} market={market} />}
-    <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>{tab === 'stocks' ? 'Marché · Yahoo Finance · cours de clôture ajustés · sans conversion EUR' : 'Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR'}</span></div>
+    {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : tab === 'stocks' ? <StockPortfolio data={data} market={market} /> : tab === 'scpi' ? <ScpiPortfolio data={data} onSave={onSave} /> : <Editor data={data} onSave={save} market={market} />}
+    {tab !== 'scpi' && <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>{tab === 'stocks' ? 'Marché · Yahoo Finance · cours de clôture ajustés · sans conversion EUR' : 'Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR'}</span></div>}
   </>;
 }

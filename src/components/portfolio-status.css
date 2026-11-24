@@ -1,5 +1,6 @@
 .portfolio-heading{align-items:center;gap:20px}
 .portfolio-heading h1{margin:0}
+.portfolio-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .portfolio-status{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap}
 .portfolio-status .date-chip{margin:0;font-size:11px;padding:11px 14px}
 .sync-market-button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:11px 14px;font-size:11px;line-height:1.5}

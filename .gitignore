@@ -11,6 +11,9 @@ supabase/.temp/
 extension/project.json
 
 # Fichiers locaux d'outillage des agents IA
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/import-scpi/
 .playwright-mcp/
 skills-lock.json

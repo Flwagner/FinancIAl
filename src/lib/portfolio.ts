@@ -1,9 +1,10 @@
 import { isKnownMarketCode } from './market';
-export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market'; group?: string; rateAsOf?: string };
+import { validateScpiStore, type ScpiStore } from './scpi';
+export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market' | 'louve'; amountSource?: 'manual' | 'louve'; scpiId?: string; scpiRateUnavailable?: boolean; group?: string; rateAsOf?: string };
 export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number>; kind?: 'current' };
 type MonthlySnapshot = { month: string; capturedAt: string; total: number };
 type Goals = { capital: number; annual: number; monthly: number };
-export type Portfolio = { readings: Reading[]; goals: Goals; updatedAt?: string; monthlySnapshots?: MonthlySnapshot[] };
+export type Portfolio = { readings: Reading[]; goals: Goals; updatedAt?: string; monthlySnapshots?: MonthlySnapshot[]; scpi?: ScpiStore };
 export function normalizeGoals(goals: Goals): Goals {
   return { ...goals, monthly: goals.annual / 12 };
 }
@@ -75,6 +76,7 @@ export function freezeCurrentMonth(data: Portfolio, total: number, date: string,
   return next;
 }
 export function validatePortfolio(data: Portfolio) {
+  if (data.scpi) validateScpiStore(data.scpi);
   const months = new Set<string>();
   for (const snapshot of data.monthlySnapshots ?? []) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(snapshot.month) || months.has(snapshot.month)) throw new Error('Un seul montant figé par mois est autorisé, avec un mois valide.');
@@ -91,7 +93,10 @@ export function validatePortfolio(data: Portfolio) {
     if (Object.values(r.categoryRates || {}).some(v => !Number.isFinite(v))) throw new Error('Taux de catégorie invalide.');
     for (const p of r.positions) {
       if (!p.name.trim() || !p.category.trim() || !Number.isFinite(p.amount) || p.amount < 0 || !Number.isFinite(p.rate)) throw new Error('Placement incomplet ou montant/taux invalide.');
-      if (p.rateSource && !['manual', 'market'].includes(p.rateSource)) throw new Error('Source du rendement invalide.');
+      if (p.rateSource && !['manual', 'market', 'louve'].includes(p.rateSource)) throw new Error('Source du rendement invalide.');
+      if (p.amountSource && !['manual', 'louve'].includes(p.amountSource)) throw new Error('Source du montant invalide.');
+      if (p.scpiRateUnavailable !== undefined && typeof p.scpiRateUnavailable !== 'boolean') throw new Error('Disponibilité du taux SCPI invalide.');
+      if ((p.rateSource === 'louve' || p.amountSource === 'louve') && (p.category !== 'SCPI' || !p.scpiId)) throw new Error('Source Louve réservée aux SCPI identifiées.');
       if (p.rateSource === 'market' && !isKnownMarketCode(p.code)) throw new Error(`Cotation automatique non reconnue : ${p.code}.`);
     }
     if (r.positions.length && Math.abs(summarize(r.positions).total - r.total) > 0.02) throw new Error('Le détail ne correspond pas au total.');

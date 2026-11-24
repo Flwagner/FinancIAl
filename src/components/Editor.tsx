@@ -5,12 +5,13 @@ import { categories, currentSnapshot, euro, freezeCurrentMonth, monthlyReadings,
 import { isKnownMarketCode, livePositions, type MarketData } from '@/lib/market';
 import { errorMessage } from '@/lib/errors';
 import { readingsFingerprint } from '@/lib/portfolio-save';
+import { latestScpi, scpiSource, setScpiSource } from '@/lib/scpi';
 const collapsedCategoriesKey = 'financial:editor:collapsed-categories';
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
-const blank = (positions: Position[] = []): Reading => ({ id: crypto.randomUUID(), date: today(), projected: false, total: summarize(positions).total, positions: structuredClone(positions) });
+const blank = (positions: Position[] = []): Reading => ({ id: crypto.randomUUID(), date: today(), projected: false, total: summarize(positions).total, positions: structuredClone(positions).map(p => p.category === 'SCPI' && p.scpiId ? { ...p, amountSource: scpiSource(p), rateSource: scpiSource(p) } : p) });
 export default function Editor({ data, onSave, market = { returns: [], statuses: [] } }: { data: Portfolio; onSave: (data: Portfolio) => Promise<Portfolio | void>; market?: MarketData }) {
   const latest = currentSnapshot(data);
   const [draft, setDraft] = useState<Reading>(() => ({ ...blank(latest?.positions), categoryRates: latest?.categoryRates }));
@@ -77,7 +78,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
   function updatePosition(index: number, change: Partial<Position>) {
     const positions = draft.positions.map((p, i) => i === index ? {
       ...p, ...change,
-      ...(change.code !== undefined ? { rateSource: isKnownMarketCode(change.code) ? 'market' as const : 'manual' as const } : {}),
+      ...(change.code !== undefined && change.code !== p.code ? p.category === 'SCPI' ? { rateSource: 'manual' as const, amountSource: 'manual' as const } : { rateSource: isKnownMarketCode(change.code) ? 'market' as const : 'manual' as const } : {}),
     } : p);
     setDraft({ ...draft, positions, total: summarize(positions).total });
   }
@@ -124,7 +125,7 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
     <p className="muted">Saisir un ISIN ou un code de cotation reconnu active le suivi marché. Le cours ajusté Yahoo est une approximation de rendement avec distributions réinvesties, dépendante de la qualité de la source. Si ses données manquent, le taux du relevé est conservé avec un avertissement.</p>
     {notices.length > 0 && <div className="notice"><ul>{notices.map(w => <li key={w}>{w}</li>)}</ul></div>}
     <div className="table-scroll"><table>
-      <thead><tr><th>Placement</th><th>Classe d’actifs</th><th>Enveloppe</th><th>Code</th><th>Regroupement</th><th>Montant (€)</th><th>Source du taux</th><th>Taux annuel (%)</th><th /></tr></thead>
+      <thead><tr><th>Placement</th><th>Classe d’actifs</th><th>Enveloppe</th><th>Code</th><th>Regroupement</th><th>Montant (€)</th><th>Taux annuel (%)</th><th>Source</th><th /></tr></thead>
       {displayedGroups.map(({ category, entries }) => <tbody key={category}>
         <tr className="editor-category"><th scope="rowgroup" colSpan={9}><button type="button" className="editor-category-toggle" aria-expanded={!collapsedCategories.has(category)} onClick={() => toggleCategory(category)}><span>{collapsedCategories.has(category) ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}{category || 'Sans classe d’actifs'}</span><span>{euro(entries.reduce((total, { position }) => total + (Number.isFinite(position.amount) ? position.amount : 0), 0))}</span></button></th></tr>
         {!collapsedCategories.has(category) && entries.map(({ position: p, index: i }) => <tr key={p.id}>
@@ -133,9 +134,13 @@ export default function Editor({ data, onSave, market = { returns: [], statuses:
         <td><select aria-label={`Enveloppe ${i + 1}`} value={p.envelope} onChange={e => updatePosition(i, { envelope: e.target.value })}>{envelopes.map(envelope => <option key={envelope}>{envelope}</option>)}</select></td>
         <td><input aria-label={`Code ${i + 1}`} placeholder="ISIN ou TICKER" value={p.code} onChange={e => updatePosition(i, { code: e.target.value })} /></td>
         <td><input aria-label={`Regroupement ${i + 1}`} placeholder="Facultatif" value={p.group || ''} onChange={e => updatePosition(i, { group: e.target.value })} /></td>
-        <td><input aria-label={`Montant ${i + 1}`} type="number" step="0.01" min="0" value={Number.isFinite(p.amount) ? p.amount : ''} onFocus={() => setFrozenCategoryOrder(positionGroups.map(group => group.category))} onBlur={() => setFrozenCategoryOrder(null)} onChange={e => updatePosition(i, { amount: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
-        <td><select aria-label={`Source du taux ${i + 1}`} value={p.rateSource || 'manual'} onChange={e => updatePosition(i, { rateSource: e.target.value as 'manual' | 'market' })}><option value="manual">Manuel</option><option value="market" disabled={!isKnownMarketCode(p.code)}>Marché · 365 jours</option></select></td>
-        <td><input aria-label={`Taux ${i + 1}`} type="number" step="any" readOnly={p.rateSource === 'market'} title={p.rateSource === 'market' ? 'Dernière performance disponible, ou taux de repli du relevé' : 'Taux annuel manuel'} value={Number.isFinite(currentRates.positions[i]?.rate) ? currentRates.positions[i].rate : ''} onChange={e => updatePosition(i, { rate: e.target.value === '' ? NaN : Number(e.target.value) })} /></td>
+        <td><input aria-label={`Montant ${i + 1}`} type="number" step="0.01" min="0" readOnly={p.amountSource === 'louve'} value={Number.isFinite(p.amount) ? p.amount : ''} onFocus={() => setFrozenCategoryOrder(positionGroups.map(group => group.category))} onBlur={() => setFrozenCategoryOrder(null)} onChange={e => updatePosition(i, { amount: e.target.value === '' ? NaN : Number(e.target.value), ...(p.category === 'SCPI' ? { amountSource: 'manual' as const, rateSource: 'manual' as const } : {}) })} /></td>
+        <td><input aria-label={`Taux ${i + 1}`} type="number" step="any" readOnly={p.rateSource === 'market' || p.rateSource === 'louve'} title={p.rateSource === 'market' ? 'Dernière performance disponible, ou taux de repli du relevé' : p.rateSource === 'louve' ? 'Taux du dernier import Louve : N−1 en priorité, fiche générale en repli' : 'Taux annuel manuel'} placeholder={p.scpiRateUnavailable ? 'Indisponible' : undefined} value={!p.scpiRateUnavailable && Number.isFinite(currentRates.positions[i]?.rate) ? currentRates.positions[i].rate : ''} onChange={e => updatePosition(i, { rate: e.target.value === '' ? NaN : Number(e.target.value), ...(p.category === 'SCPI' ? { scpiRateUnavailable: false, amountSource: 'manual' as const, rateSource: 'manual' as const } : {}) })} />{p.category === 'SCPI' && <small className="muted">{p.rateSource === 'louve' && latestScpi(data)?.positions.find(l => l.id === p.scpiId)?.rateReference === 'general' ? 'Fiche générale · année non précisée' : p.rateAsOf ? `Référence : ${p.rateAsOf.slice(0, 4)}` : 'Année non renseignée'}</small>}</td>
+        <td><select aria-label={`Source ${i + 1}`} value={p.category === 'SCPI' ? scpiSource(p) : p.rateSource || 'manual'} onChange={e => {
+          if (p.category === 'SCPI') {
+            updatePosition(i, setScpiSource(p, e.target.value as 'manual' | 'louve', latestScpi(data)?.positions.find(l => l.id === p.scpiId)));
+          } else updatePosition(i, { rateSource: e.target.value as 'manual' | 'market' });
+        }}><option value="manual">Manuel</option>{p.category === 'SCPI' ? <option value="louve" disabled={latestScpi(data)?.positions.find(l => l.id === p.scpiId)?.rate === undefined}>Louve Invest</option> : <option value="market" disabled={!isKnownMarketCode(p.code)}>Marché · 365 jours</option>}</select></td>
         <td><button className="icon-button" aria-label={`Supprimer ${p.name || 'placement'}`} onClick={() => { const positions = draft.positions.filter((_, j) => i !== j); setDraft({ ...draft, positions, total: summarize(positions).total }); }}><Trash2 size={16} /></button></td>
       </tr>)}</tbody>)}
     </table></div>
