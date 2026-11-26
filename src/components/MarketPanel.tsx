@@ -20,6 +20,7 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [syncError, setSyncError] = useState(false);
+  const [goalsRequest, setGoalsRequest] = useState(0);
   const syncLock = useRef(false);
   const revision = useRef(0);
   useEffect(() => {
@@ -68,9 +69,9 @@ export default function MarketPanel({ data, onSave, tab, sidebar }: { data: Port
     </div>
     <SyncFeedback message={syncMessage} error={syncError} />
     {scpiPositions(data).some(p => p.scpiRateUnavailable) && <p className="notice" role="status">Certains taux SCPI sont indisponibles : les estimations de revenus et de rendement sont incomplètes.</p>}
-    {sidebar && createPortal(<div className={tab === 'editor' ? undefined : 'goals-desktop-only'}><SidebarGoals data={data} market={market} onSave={async next => { await save(next); }} /></div>, sidebar)}
+    {sidebar && createPortal(<div className={tab === 'editor' ? undefined : 'goals-desktop-only'}><SidebarGoals data={data} market={market} openRequest={goalsRequest} onSave={async next => { await save(next); }} /></div>, sidebar)}
     {tab === 'editor' && <div className="market-toolbar"><PushNotifications /></div>}
-    {tab === 'dashboard' ? <Dashboard data={data} market={market} /> : tab === 'stocks' ? <StockPortfolio data={data} market={market} /> : tab === 'scpi' ? <ScpiPortfolio data={data} onSave={onSave} /> : <Editor data={data} onSave={save} market={market} />}
+    {tab === 'dashboard' ? <Dashboard data={data} market={market} onEditAllocation={() => setGoalsRequest(value => value + 1)} /> : tab === 'stocks' ? <StockPortfolio data={data} market={market} /> : tab === 'scpi' ? <ScpiPortfolio data={data} onSave={onSave} /> : <Editor data={data} onSave={save} market={market} />}
     {tab !== 'scpi' && <div className={`market-toolbar${tab === 'dashboard' ? ' market-toolbar-dashboard' : ''}`}><span>{tab === 'stocks' ? 'Marché · Yahoo Finance · cours de clôture ajustés · sans conversion EUR' : 'Marché · Yahoo Finance · performance sur 365 jours, distributions réinvesties · sans conversion EUR'}</span></div>}
   </>;
 }
