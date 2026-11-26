@@ -3,11 +3,12 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Ref
 import { colors, euro, percent, percent1, type Reading } from '@/lib/portfolio';
 const tooltipStyle = { background: '#202624', border: '1px solid #39423d', borderRadius: 12, color: '#f1f5ef' };
 const rateColor = (rate: number) => rate < 0 ? '#fb7185' : '#a3e635';
-export function Distribution({ data, centerTotal, centerLabel = 'TOTAL' }: { data: { name: string; value: number }[]; centerTotal?: number; centerLabel?: string }) {
+export function Distribution({ data, centerTotal, centerLabel = 'TOTAL', showAmounts = false, percentageDecimals = 1 }: { data: { name: string; value: number }[]; centerTotal?: number; centerLabel?: string; showAmounts?: boolean; percentageDecimals?: 1 | 2 }) {
   data = [...data].sort((a, b) => b.value - a.value);
   const total = data.reduce((s, d) => s + d.value, 0);
+  const formatShare = showAmounts || percentageDecimals === 2 ? percent : percent1;
   if (!total) return <p className="empty">Aucune valorisation disponible.</p>;
-  return <div className="distribution"><div className="donut"><ResponsiveContainer width="100%" height={230}><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={73} outerRadius={102} paddingAngle={3} stroke="none">{data.map((d, i) => <Cell key={d.name} fill={colors[i % colors.length]} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={v => euro(Number(v))} /></PieChart></ResponsiveContainer><div className="donut-center"><small>{centerLabel}</small><strong>{euro(centerTotal ?? total)}</strong></div></div><div className="legend">{data.map((d, i) => <div key={d.name}><i style={{ background: colors[i % colors.length] }} /><span>{d.name}</span><b>{percent1(d.value / total * 100)}</b></div>)}</div></div>;
+  return <div className="distribution"><div className="donut"><ResponsiveContainer width="100%" height={230}><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={73} outerRadius={102} paddingAngle={3} stroke="none">{data.map((d, i) => <Cell key={d.name} fill={colors[i % colors.length]} />)}</Pie><Tooltip contentStyle={tooltipStyle} formatter={v => euro(Number(v))} /></PieChart></ResponsiveContainer><div className="donut-center"><small>{centerLabel}</small><strong>{euro(centerTotal ?? total)}</strong></div></div><div className="legend">{data.map((d, i) => <div key={d.name}><i style={{ background: colors[i % colors.length] }} /><span>{d.name}</span><b>{formatShare(d.value / total * 100)}{showAmounts && <> · {euro(d.value)}</>}</b></div>)}</div></div>;
 }
 export function Evolution({ readings, target }: { readings: Reading[]; target: number }) {
   const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));

@@ -1,11 +1,13 @@
 import { isKnownMarketCode } from './market';
 import { validateScpiStore, type ScpiStore } from './scpi';
+import { ageOnDate, localCalendarDate } from './simulation-age';
+import { parseScenarios, type Scenario } from './projection';
 export type Position = { id: string; name: string; category: string; envelope: string; code: string; amount: number; rate: number; rateSource?: 'manual' | 'market' | 'louve'; amountSource?: 'manual' | 'louve'; scpiId?: string; scpiRateUnavailable?: boolean; group?: string; rateAsOf?: string };
 export type Reading = { id: string; date: string; projected: boolean; total: number; positions: Position[]; categoryRates?: Record<string, number>; kind?: 'current' };
 type MonthlySnapshot = { month: string; capturedAt: string; total: number };
 type Goals = { capital: number; annual: number; monthly: number };
 export type AllocationTarget = Record<string, number>;
-export type Portfolio = { readings: Reading[]; goals: Goals; allocationTarget?: AllocationTarget; updatedAt?: string; monthlySnapshots?: MonthlySnapshot[]; scpi?: ScpiStore };
+export type Portfolio = { readings: Reading[]; goals: Goals; birthDate?: string; simulations?: Scenario[]; simulationHorizon?: number; allocationTarget?: AllocationTarget; updatedAt?: string; monthlySnapshots?: MonthlySnapshot[]; scpi?: ScpiStore };
 export function normalizeGoals(goals: Goals): Goals {
   return { ...goals, monthly: goals.annual / 12 };
 }
@@ -120,6 +122,15 @@ export function freezeCurrentMonth(data: Portfolio, total: number, date: string,
   return next;
 }
 export function validatePortfolio(data: Portfolio) {
+  if (data.simulations !== undefined && !parseScenarios(JSON.stringify(data.simulations))) {
+    throw new Error('Les simulations doivent contenir entre 1 et 3 scénarios valides.');
+  }
+  if (data.simulationHorizon !== undefined && (!Number.isInteger(data.simulationHorizon) || data.simulationHorizon < 1 || data.simulationHorizon > 30)) {
+    throw new Error('L’horizon des simulations doit être compris entre 1 et 30 ans.');
+  }
+  if (data.birthDate !== undefined && ageOnDate(data.birthDate, localCalendarDate()) === null) {
+    throw new Error('La date de naissance doit être une date valide, non future, au format AAAA-MM-JJ.');
+  }
   if (data.allocationTarget !== undefined) validateAllocationTarget(data.allocationTarget);
   if (data.scpi) validateScpiStore(data.scpi);
   const months = new Set<string>();
