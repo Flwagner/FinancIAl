@@ -224,10 +224,13 @@ Installation sur un nouveau projet :
 6. Après vérification, activer `daily-market-sync` dans Integrations → Cron.
    Le workflow `deploy.yml` ne fait que tester et déployer la PWA.
 
-Le job utilise `30 7,8 * * *` en UTC et ne déclenche l’appel qu’à **09:30 à
-Paris**, été comme hiver, week-ends compris. Un verrou atomique de cinq minutes
-empêche deux traitements quotidiens concurrents ; une journée déjà réussie n’est
-pas rejouée. Les échecs et résultats partiels peuvent être relancés. Le traitement
+La migration `20261127101439_twice_daily_market_sync.sql` ajoute un second passage :
+le job utilise `0,30 7,8,12,13 * * *` en UTC et ne déclenche l’appel qu’à **09:30 et
+14:00 à Paris**, été comme hiver, week-ends compris. Elle conserve l’état actif/inactif
+du job existant. Un verrou atomique de cinq minutes empêche deux traitements
+concurrents ; un créneau déjà réussi (avant ou à partir de 14:00) n’est pas rejoué,
+mais la réussite du matin ne bloque pas le passage de 14:00.
+Les échecs et résultats partiels peuvent être relancés. Le traitement
 Yahoo est séquentiel, espacé, borné à 65 secondes ; un 429 est retenté une seule
 fois puis interrompt les appels restants. Les dernières valeurs valides sont
 conservées. Un échec Push ne supprime pas les cours mais rend le résultat partiel.

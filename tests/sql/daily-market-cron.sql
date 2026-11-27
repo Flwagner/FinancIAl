@@ -21,16 +21,17 @@ begin
     then raise exception 'Concurrent lease accepted'; end if;
     perform public.finish_daily_market_sync(run_id, 1, 0, false);
     if financial_private.start_daily_market_sync(token, gen_random_uuid()) <> 'completed'
-    then raise exception 'Duplicate daily run accepted'; end if;
+    then raise exception 'Duplicate slot run accepted'; end if;
   elsif state not in ('busy','completed') then raise exception 'Unexpected lease state';
   end if;
   if exists (
     select d from (values (date '2026-03-29'), (date '2026-10-25'),
       (date '2026-07-01'), (date '2026-11-17')) dates(d)
-    cross join (values (7),(8)) hours(h)
+    cross join (values (7),(8),(12),(13)) hours(h)
+    cross join (values (0),(30)) minutes(m)
     group by d having count(*) filter (
-      where ((d::timestamp at time zone 'UTC' + make_interval(hours => h, mins => 30))
-        at time zone 'Europe/Paris')::time = time '09:30') <> 1
+      where ((d::timestamp at time zone 'UTC' + make_interval(hours => h, mins => m))
+        at time zone 'Europe/Paris')::time in (time '09:30', time '14:00')) <> 2
   ) then raise exception 'Invalid Paris daylight-saving schedule'; end if;
 end;
 $$;
